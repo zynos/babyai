@@ -4,7 +4,7 @@ import torch
 from babyai.rl.format import default_preprocess_obss
 from babyai.rl.utils import DictList, ParallelEnv
 from babyai.rl.utils.supervised_losses import ExtraInfoCollector
-from babyai.rudder import Net
+from myScripts.rudder import Net
 
 
 class BaseAlgo(ABC):
