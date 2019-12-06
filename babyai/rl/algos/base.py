@@ -1,10 +1,10 @@
 from abc import ABC, abstractmethod
 import torch
-import numpy
 
 from babyai.rl.format import default_preprocess_obss
 from babyai.rl.utils import DictList, ParallelEnv
 from babyai.rl.utils.supervised_losses import ExtraInfoCollector
+from babyai.rudder import Net
 
 
 class BaseAlgo(ABC):
@@ -71,7 +71,9 @@ class BaseAlgo(ABC):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.num_procs = len(envs)
         self.num_frames = self.num_frames_per_proc * self.num_procs
-
+        # self.rudder = Net(128, 7, 128).cuda()
+        self.rudder2=Net(128*2,7,128*2).to(self.device)
+        self.running_loss = 100.
 
         assert self.num_frames_per_proc % self.recurrence == 0
 
@@ -80,7 +82,7 @@ class BaseAlgo(ABC):
         shape = (self.num_frames_per_proc, self.num_procs)
 
         self.obs = self.env.reset()
-        self.obss = [None]*(shape[0])
+        self.obss = [None] * (shape[0])
 
         self.memory = torch.zeros(shape[1], self.acmodel.memory_size, device=self.device)
         self.memories = torch.zeros(*shape, self.acmodel.memory_size, device=self.device)
@@ -128,6 +130,77 @@ class BaseAlgo(ABC):
             reward, policy loss, value loss, etc.
 
         """
+        embeddings = []
+        actions = []
+        rewards = []
+        images=[]
+        instructs=[]
+
+        def lossfunction(predictions, rewards):
+            rewards = torch.tensor(rewards, device=self.device).reshape(1,-1,1)
+            returns = rewards.sum(dim=1)
+            # Main task: predicting return at last timestep
+            main_loss = torch.mean(predictions[:, -1] - returns) ** 2
+            # Auxiliary task: predicting final return at every timestep ([..., None] is for correct broadcasting)
+            aux_loss = torch.mean(predictions[:, :] - returns[..., None]) ** 2
+            # Combine losses
+            loss = main_loss + aux_loss * 0.5
+            return loss
+
+        def create_proc_dict(alls):
+            procDict = dict()
+            for timeStep in alls:
+                for i, process in enumerate(timeStep):
+                    try:
+                        procDict[i].append(process)
+                    except:
+                        procDict[i] = [process]
+            return procDict
+        def do_my_stuff2(images,instrs):
+            rewards2 = [torch.tensor(r, device=self.device).float() for r in rewards]
+            rews = torch.stack(rewards2).transpose(0, 1)
+            rew_mean = rews.mean()
+            if rew_mean>0.15:
+                optimizer = torch.optim.Adam(self.rudder2.parameters(), lr=1e-3, weight_decay=1e-5)
+
+                optimizer.zero_grad()
+                acts = torch.stack(actions).transpose(0, 1).detach().clone()
+                images=torch.stack(images).transpose(0, 1).detach().clone()
+                instrs=instrs.detach().clone()
+                pred=self.rudder2.forward(images,instrs,acts)
+                rewards2=[torch.tensor(r,device=self.device).float() for r in rewards]
+                rews=torch.stack(rewards2).transpose(0,1)
+                rew_mean=rews.mean()
+                loss = lossfunction(pred, rews)
+                loss.backward()
+                self.running_loss = self.running_loss * 0.99 + loss * 0.01
+                optimizer.step()
+                print("runn loss,loss,rew mean",self.running_loss.item(),loss.item(),rew_mean)
+
+
+        def do_my_stuff():
+            acDict = create_proc_dict(actions)
+            retDict = create_proc_dict(rewards)
+            rewards2=[torch.tensor(r,device=self.device).float() for r in rewards]
+            embDict = create_proc_dict(embeddings)
+            embs=torch.stack(embeddings).transpose(0,1)
+            acts=torch.stack(actions).transpose(0,1)
+            rews=torch.stack(rewards2).transpose(0,1)
+            optimizer = torch.optim.Adam(self.rudder.parameters(), lr=1e-3, weight_decay=1e-5)
+
+            optimizer.zero_grad()
+            losses=[]
+            for proc in range(self.num_procs):
+                pred = self.rudder(embs, acts)
+                loss = lossfunction(pred, rews)
+                losses.append(loss.item())
+                loss.backward()
+                self.running_loss = running_loss * 0.99 + loss * 0.01
+                optimizer.step()
+
+            print("loss mean",(sum(losses)/len(losses)))
+
+
         for i in range(self.num_frames_per_proc):
             # Do one agent-environment interaction
 
@@ -138,10 +211,15 @@ class BaseAlgo(ABC):
                 value = model_results['value']
                 memory = model_results['memory']
                 extra_predictions = model_results['extra_predictions']
+                embed = model_results["embed"]
+                embeddings.append(embed.clone().detach())
 
             action = dist.sample()
-
+            actions.append(action.clone().detach())
+            images.append(preprocessed_obs.image)
+            instructs.append(preprocessed_obs.instr)
             obs, reward, done, env_info = self.env.step(action.cpu().numpy())
+            rewards.append(reward)
             if self.aux_info:
                 env_info = self.aux_info_collector.process(env_info)
                 # env_info = self.process_aux_info(env_info)
@@ -188,15 +266,17 @@ class BaseAlgo(ABC):
             self.log_episode_num_frames *= self.mask
 
         # Add advantage and return to experiences
-
+        # do_my_stuff()
+        do_my_stuff2(images,preprocessed_obs.instr)
         preprocessed_obs = self.preprocess_obss(self.obs, device=self.device)
+
         with torch.no_grad():
             next_value = self.acmodel(preprocessed_obs, self.memory * self.mask.unsqueeze(1))['value']
 
         for i in reversed(range(self.num_frames_per_proc)):
-            next_mask = self.masks[i+1] if i < self.num_frames_per_proc - 1 else self.mask
-            next_value = self.values[i+1] if i < self.num_frames_per_proc - 1 else next_value
-            next_advantage = self.advantages[i+1] if i < self.num_frames_per_proc - 1 else 0
+            next_mask = self.masks[i + 1] if i < self.num_frames_per_proc - 1 else self.mask
+            next_value = self.values[i + 1] if i < self.num_frames_per_proc - 1 else next_value
+            next_advantage = self.advantages[i + 1] if i < self.num_frames_per_proc - 1 else 0
 
             delta = self.rewards[i] + self.discount * next_value * next_mask - self.values[i]
             self.advantages[i] = delta + self.discount * self.gae_lambda * next_advantage * next_mask
