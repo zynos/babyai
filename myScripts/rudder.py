@@ -5,10 +5,10 @@ from myScripts.preProcess import PreProcess
 
 
 class Net(torch.nn.Module):
-    def __init__(self, embed_dim, action_dim, n_lstm, image_dim=128):
+    def __init__(self, embed_dim, action_dim, n_lstm, image_dim=128,device="cpu"):
         super(Net, self).__init__()
-        self.preProcess = PreProcess()
-        self.device = "cuda"
+        self.device = device
+        self.preProcess = PreProcess(self.device)
 
         # This will create an LSTM layer where we will feed the concatenate
         self.lstm1 = LSTMLayer(

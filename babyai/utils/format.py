@@ -6,6 +6,7 @@ import torch
 import babyai.rl
 
 from .. import utils
+from myScripts.myflair import transform_obs
 
 
 def get_vocab_path(model_name):
@@ -42,9 +43,10 @@ class Vocabulary:
 
 
 class InstructionsPreprocessor(object):
-    def __init__(self, model_name, load_vocab_from=None):
+    def __init__(self, model_name, load_vocab_from=None, use_bert=False):
         self.model_name = model_name
         self.vocab = Vocabulary(model_name)
+        self.use_bert = use_bert
 
         path = get_vocab_path(model_name)
         if not os.path.exists(path) and load_vocab_from is not None:
@@ -59,19 +61,24 @@ class InstructionsPreprocessor(object):
     def __call__(self, obss, device=None):
         raw_instrs = []
         max_instr_len = 0
+        if self.use_bert:
+            instrs = transform_obs(obss)
+            instrs = torch.stack(instrs)
 
-        for obs in obss:
-            tokens = re.findall("([a-z]+)", obs["mission"].lower())
-            instr = numpy.array([self.vocab[token] for token in tokens])
-            raw_instrs.append(instr)
-            max_instr_len = max(len(instr), max_instr_len)
+        else:
 
-        instrs = numpy.zeros((len(obss), max_instr_len))
+            for obs in obss:
+                tokens = re.findall("([a-z]+)", obs["mission"].lower())
+                instr = numpy.array([self.vocab[token] for token in tokens])
+                raw_instrs.append(instr)
+                max_instr_len = max(len(instr), max_instr_len)
 
-        for i, instr in enumerate(raw_instrs):
-            instrs[i, :len(instr)] = instr
+            instrs = numpy.zeros((len(obss), max_instr_len))
 
-        instrs = torch.tensor(instrs, device=device, dtype=torch.long)
+            for i, instr in enumerate(raw_instrs):
+                instrs[i, :len(instr)] = instr
+
+            instrs = torch.tensor(instrs, device=device, dtype=torch.long)
         return instrs
 
 
@@ -98,9 +105,9 @@ class IntImagePreprocessor(object):
 
 
 class ObssPreprocessor:
-    def __init__(self, model_name, obs_space=None, load_vocab_from=None):
+    def __init__(self, model_name, obs_space=None, load_vocab_from=None,use_bert=False):
         self.image_preproc = RawImagePreprocessor()
-        self.instr_preproc = InstructionsPreprocessor(model_name, load_vocab_from)
+        self.instr_preproc = InstructionsPreprocessor(model_name, load_vocab_from,use_bert)
         self.vocab = self.instr_preproc.vocab
         self.obs_space = {
             "image": 147,

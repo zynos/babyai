@@ -3,8 +3,8 @@ from torch import nn
 
 class PreProcess:
 
-    def __init__(self):
-        self.device="cuda"
+    def __init__(self,device):
+        self.device=device
         self.obs_space_instr = 100
         self.lang_model = 'gru'
         self.instr_dim=128

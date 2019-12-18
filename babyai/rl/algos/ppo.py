@@ -69,7 +69,6 @@ class PPOAlgo(BaseAlgo):
                 # inds is a numpy array of indices that correspond to the beginning of a sub-batch
                 # there are as many inds as there are batches
                 # Initialize batch values
-
                 batch_entropy = 0
                 batch_value = 0
                 batch_policy_loss = 0

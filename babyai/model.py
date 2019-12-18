@@ -45,7 +45,7 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
     def __init__(self, obs_space, action_space,
                  image_dim=128, memory_dim=128, instr_dim=128,
                  use_instr=False, lang_model="gru", use_memory=False, arch="cnn1",
-                 aux_info=None):
+                 aux_info=None,use_bert=True):
         super().__init__()
 
         # Decide which components are enabled
@@ -59,6 +59,8 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
         self.instr_dim = instr_dim
 
         self.obs_space = obs_space
+
+        self.use_bert = use_bert
 
         if arch == "cnn1":
             self.image_conv = nn.Sequential(
@@ -206,7 +208,11 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
 
     def forward(self, obs, memory, instr_embedding=None,ret_embed=False):
         if self.use_instr and instr_embedding is None:
-            instr_embedding = self._get_instr_embedding(obs.instr)
+            if self.use_bert:
+                instr_embedding = obs.instr
+
+            else:
+                instr_embedding = self._get_instr_embedding(obs.instr)
         if self.use_instr and self.lang_model == "attgru":
             # outputs: B x L x D
             # memory: B x M

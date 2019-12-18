@@ -46,6 +46,8 @@ args = parser.parse_args()
 
 utils.seed(args.seed)
 
+use_bert = False
+
 # Generate environments
 envs = []
 for i in range(args.procs):
@@ -79,7 +81,8 @@ logger = logging.getLogger(__name__)
 if 'emb' in args.arch:
     obss_preprocessor = utils.IntObssPreprocessor(args.model, envs[0].observation_space, args.pretrained_model)
 else:
-    obss_preprocessor = utils.ObssPreprocessor(args.model, envs[0].observation_space, args.pretrained_model)
+    obss_preprocessor = utils.ObssPreprocessor(args.model, envs[0].observation_space, args.pretrained_model,
+                                               use_bert=use_bert)
 
 # Define actor-critic model
 acmodel = utils.load_model(args.model, raise_not_found=False)
@@ -89,7 +92,7 @@ if acmodel is None:
     else:
         acmodel = ACModel(obss_preprocessor.obs_space, envs[0].action_space,
                           args.image_dim, args.memory_dim, args.instr_dim,
-                          not args.no_instr, args.instr_arch, not args.no_mem, args.arch)
+                          not args.no_instr, args.instr_arch, not args.no_mem, args.arch,use_bert=use_bert)
 
 obss_preprocessor.vocab.save()
 utils.save_model(acmodel, args.model)

@@ -219,6 +219,7 @@ class BaseAlgo(ABC):
             images.append(preprocessed_obs.image)
             instructs.append(preprocessed_obs.instr)
             obs, reward, done, env_info = self.env.step(action.cpu().numpy())
+
             rewards.append(reward)
             if self.aux_info:
                 env_info = self.aux_info_collector.process(env_info)
@@ -267,7 +268,7 @@ class BaseAlgo(ABC):
 
         # Add advantage and return to experiences
         # do_my_stuff()
-        do_my_stuff2(images,preprocessed_obs.instr)
+        # do_my_stuff2(images,preprocessed_obs.instr)
         preprocessed_obs = self.preprocess_obss(self.obs, device=self.device)
 
         with torch.no_grad():
