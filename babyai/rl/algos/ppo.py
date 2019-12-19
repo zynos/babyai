@@ -166,7 +166,7 @@ class PPOAlgo(BaseAlgo):
 
         indexes = numpy.arange(0, self.num_frames, self.recurrence)
         indexes = numpy.random.permutation(indexes)
-
+        # my comment: // rounds down to nearest whole number
         num_indexes = self.batch_size // self.recurrence
         batches_starting_indexes = [indexes[i:i + num_indexes] for i in range(0, len(indexes), num_indexes)]
 

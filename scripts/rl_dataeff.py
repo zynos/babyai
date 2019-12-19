@@ -7,7 +7,6 @@ import pandas
 import argparse
 import json
 import numpy
-
 parser = argparse.ArgumentParser("Analyze data efficiency of reinforcement learning")
 parser.add_argument("--path", default='.')
 parser.add_argument("--regex", default='.*')

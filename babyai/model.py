@@ -6,6 +6,8 @@ from torch.distributions.categorical import Categorical
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 import babyai.rl
 from babyai.rl.utils.supervised_losses import required_heads
+#my imports
+from flair.embeddings import FlairEmbeddings, BertEmbeddings, StackedEmbeddings
 
 
 # Function from https://github.com/ikostrikov/pytorch-a2c-ppo-acktr/blob/master/model.py
@@ -35,7 +37,7 @@ class ExpertControllerFiLM(nn.Module):
     def forward(self, x, y):
         x = F.relu(self.bn1(self.conv1(x)))
         x = self.conv2(x)
-        out = x * self.weight(y).unsqueeze(2).unsqueeze(3) + self.bias(y).unsqueeze(2).unsqueeze(3)
+        out = x * self.weight(y).unsqueeze(2).unsqueeze(3)  + self.bias(y).unsqueeze(2).unsqueeze(3)
         out = self.bn2(out)
         out = F.relu(out)
         return out
