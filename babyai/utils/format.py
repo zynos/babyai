@@ -6,6 +6,7 @@ import torch
 import babyai.rl
 
 from .. import utils
+from flair.embeddings import FlairEmbeddings, BertEmbeddings, StackedEmbeddings
 
 
 def get_vocab_path(model_name):
@@ -141,3 +142,35 @@ class IntObssPreprocessor(object):
             obs_.instr = self.instr_preproc(obss, device=device)
 
         return obs_
+from flair.data import Sentence
+class BERTObssPreprocessor:
+    def __init__(self, model_name, obs_space=None, load_vocab_from=None):
+        self.image_preproc = RawImagePreprocessor()
+        self.instr_preproc = InstructionsPreprocessor(model_name, load_vocab_from)
+        self.vocab = self.instr_preproc.vocab
+        self.obs_space = {
+            "image": 147,
+            "instr": self.vocab.max_size
+        }
+        # init Flair embeddings
+        self.flair_forward_embedding = FlairEmbeddings('multi-forward')
+        self.flair_backward_embedding = FlairEmbeddings('multi-backward')
+
+        # init multilingual BERT
+        self.bert_embedding = BertEmbeddings('bert-base-multilingual-cased')
+        self.stacked_embeddings = StackedEmbeddings(
+            embeddings=[self.flair_forward_embedding, self.flair_backward_embedding, self.bert_embedding])
+
+    def __call__(self, obss, device=None):
+        obs_ = babyai.rl.DictList()
+
+        if "image" in self.obs_space.keys():
+            obs_.image = self.image_preproc(obss, device=device)
+
+        if "instr" in self.obs_space.keys():
+            obs_.instr = self.instr_preproc(obss, device=device)
+
+            sentence = Sentence('I love Berlin .')
+
+        return obs_
+

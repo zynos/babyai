@@ -74,7 +74,7 @@ class BaseAlgo(ABC):
         # self.rudder = Net(128, 7, 128).cuda()
         self.rudder2=Net(128*2,7,128*2).to(self.device)
         self.running_loss = 100.
-
+        self.use_rudder = False
         assert self.num_frames_per_proc % self.recurrence == 0
 
         # Initialize experience values
@@ -267,7 +267,8 @@ class BaseAlgo(ABC):
 
         # Add advantage and return to experiences
         # do_my_stuff()
-        do_my_stuff2(images,preprocessed_obs.instr)
+        if self.use_rudder==True:
+            do_my_stuff2(images,preprocessed_obs.instr)
         preprocessed_obs = self.preprocess_obss(self.obs, device=self.device)
 
         with torch.no_grad():
