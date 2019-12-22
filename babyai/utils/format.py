@@ -6,7 +6,7 @@ import torch
 import babyai.rl
 
 from .. import utils
-from myScripts.myflair import transform_obs
+from myScripts.myFlair import transform_obs
 
 
 def get_vocab_path(model_name):
@@ -63,7 +63,7 @@ class InstructionsPreprocessor(object):
         max_instr_len = 0
         if self.use_bert:
             instrs = transform_obs(obss)
-            instrs = torch.stack(instrs)
+            instrs = torch.tensor(torch.stack(instrs),device=device)
 
         else:
 

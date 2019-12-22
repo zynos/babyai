@@ -273,7 +273,6 @@ class BaseAlgo(ABC):
 
         with torch.no_grad():
             next_value = self.acmodel(preprocessed_obs, self.memory * self.mask.unsqueeze(1))['value']
-
         for i in reversed(range(self.num_frames_per_proc)):
             next_mask = self.masks[i + 1] if i < self.num_frames_per_proc - 1 else self.mask
             next_value = self.values[i + 1] if i < self.num_frames_per_proc - 1 else next_value
@@ -284,7 +283,6 @@ class BaseAlgo(ABC):
 
         # Flatten the data correctly, making sure that
         # each episode's data is a continuous chunk
-
         exps = DictList()
         exps.obs = [self.obss[i][j]
                     for j in range(self.num_procs)

@@ -32,7 +32,6 @@ class PPOAlgo(BaseAlgo):
 
     def update_parameters(self):
         # Collect experiences
-
         exps, logs = self.collect_experiences()
         '''
         exps is a DictList with the following keys ['obs', 'memory', 'mask', 'action', 'value', 'reward',

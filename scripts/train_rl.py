@@ -91,8 +91,9 @@ if acmodel is None:
     if args.pretrained_model:
         acmodel = utils.load_model(args.pretrained_model, raise_not_found=True)
     else:
+        instr_dim=1024 if use_bert else 128
         acmodel = ACModel(obss_preprocessor.obs_space, envs[0].action_space,
-                          args.image_dim, args.memory_dim, args.instr_dim,
+                          args.image_dim, args.memory_dim, instr_dim,
                           not args.no_instr, args.instr_arch, not args.no_mem, args.arch,use_bert=use_bert)
 
 obss_preprocessor.vocab.save()
