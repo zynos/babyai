@@ -46,8 +46,9 @@ args = parser.parse_args()
 
 utils.seed(args.seed)
 
-use_bert = False
-
+use_bert = True
+bert_dim = 512
+use_rudder= True
 # Generate environments
 envs = []
 for i in range(args.procs):
@@ -83,7 +84,7 @@ if 'emb' in args.arch:
     obss_preprocessor = None
 else:
     obss_preprocessor = utils.ObssPreprocessor(args.model, envs[0].observation_space, args.pretrained_model,
-                                               use_bert=use_bert)
+                                               use_bert=use_bert,bert_dim=bert_dim)
 
 # Define actor-critic model
 acmodel = utils.load_model(args.model, raise_not_found=False)
@@ -91,7 +92,7 @@ if acmodel is None:
     if args.pretrained_model:
         acmodel = utils.load_model(args.pretrained_model, raise_not_found=True)
     else:
-        instr_dim=1024 if use_bert else 128
+        instr_dim=bert_dim if use_bert else 128
         acmodel = ACModel(obss_preprocessor.obs_space, envs[0].action_space,
                           args.image_dim, args.memory_dim, instr_dim,
                           not args.no_instr, args.instr_arch, not args.no_mem, args.arch,use_bert=use_bert)
@@ -110,7 +111,7 @@ if args.algo == "ppo":
                              args.gae_lambda,
                              args.entropy_coef, args.value_loss_coef, args.max_grad_norm, args.recurrence,
                              args.optim_eps, args.clip_eps, args.ppo_epochs, args.batch_size, obss_preprocessor,
-                             reshape_reward)
+                             reshape_reward,use_rudder=use_rudder)
 else:
     raise ValueError("Incorrect algorithm name: {}".format(args.algo))
 

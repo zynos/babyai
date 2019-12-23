@@ -43,11 +43,11 @@ class Vocabulary:
 
 
 class InstructionsPreprocessor(object):
-    def __init__(self, model_name, load_vocab_from=None, use_bert=False):
+    def __init__(self, model_name, load_vocab_from=None, use_bert=False,bert_dim=128):
         self.model_name = model_name
         self.vocab = Vocabulary(model_name)
         self.use_bert = use_bert
-
+        self.bert_dim=bert_dim
         path = get_vocab_path(model_name)
         if not os.path.exists(path) and load_vocab_from is not None:
             # self.vocab.vocab should be an empty dict
@@ -62,7 +62,7 @@ class InstructionsPreprocessor(object):
         raw_instrs = []
         max_instr_len = 0
         if self.use_bert:
-            instrs = transform_obs(obss)
+            instrs = transform_obs(obss,self.bert_dim)
             instrs = torch.tensor(torch.stack(instrs),device=device)
 
         else:
@@ -105,9 +105,9 @@ class IntImagePreprocessor(object):
 
 
 class ObssPreprocessor:
-    def __init__(self, model_name, obs_space=None, load_vocab_from=None,use_bert=False):
+    def __init__(self, model_name, obs_space=None, load_vocab_from=None,use_bert=False,bert_dim=128):
         self.image_preproc = RawImagePreprocessor()
-        self.instr_preproc = InstructionsPreprocessor(model_name, load_vocab_from,use_bert)
+        self.instr_preproc = InstructionsPreprocessor(model_name, load_vocab_from,use_bert,bert_dim)
         self.vocab = self.instr_preproc.vocab
         self.obs_space = {
             "image": 147,

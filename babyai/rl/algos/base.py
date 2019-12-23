@@ -11,7 +11,7 @@ class BaseAlgo(ABC):
     """The base class for RL algorithms."""
 
     def __init__(self, envs, acmodel, num_frames_per_proc, discount, lr, gae_lambda, entropy_coef,
-                 value_loss_coef, max_grad_norm, recurrence, preprocess_obss, reshape_reward, aux_info):
+                 value_loss_coef, max_grad_norm, recurrence, preprocess_obss, reshape_reward, aux_info,use_rudder=False):
         """
         Initializes a `BaseAlgo` instance.
 
@@ -71,10 +71,10 @@ class BaseAlgo(ABC):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.num_procs = len(envs)
         self.num_frames = self.num_frames_per_proc * self.num_procs
-        # self.rudder = Net(128, 7, 128).cuda()
-        self.rudder2=Net(128*2,7,128*2).to(self.device)
+        self.rudder = Net(128, 7, 256).cuda()
+        # self.rudder2=Net(128*2,7,128*2).to(self.device)
         self.running_loss = 100.
-        self.use_rudder = False
+        self.use_rudder = use_rudder
         assert self.num_frames_per_proc % self.recurrence == 0
 
         # Initialize experience values
@@ -195,7 +195,7 @@ class BaseAlgo(ABC):
                 loss = lossfunction(pred, rews)
                 losses.append(loss.item())
                 loss.backward()
-                self.running_loss = running_loss * 0.99 + loss * 0.01
+                self.running_loss = self.running_loss * 0.99 + loss * 0.01
                 optimizer.step()
 
             print("loss mean",(sum(losses)/len(losses)))
@@ -266,9 +266,9 @@ class BaseAlgo(ABC):
             self.log_episode_num_frames *= self.mask
 
         # Add advantage and return to experiences
-        # do_my_stuff()
         if self.use_rudder==True:
-            do_my_stuff2(images,preprocessed_obs.instr)
+            do_my_stuff()
+            # do_my_stuff2(images,preprocessed_obs.instr)
         preprocessed_obs = self.preprocess_obss(self.obs, device=self.device)
 
         with torch.no_grad():
