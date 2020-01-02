@@ -46,9 +46,10 @@ args = parser.parse_args()
 
 utils.seed(args.seed)
 
-use_bert = True
+use_bert = False
 bert_dim = 512
 use_rudder= True
+use_reshaped_reward = False
 # Generate environments
 envs = []
 for i in range(args.procs):
@@ -106,6 +107,8 @@ if torch.cuda.is_available():
 # Define actor-critic algo
 
 reshape_reward = lambda _0, _1, reward, _2: args.reward_scale * reward
+if not use_reshaped_reward:
+    reshape_reward = None
 if args.algo == "ppo":
     algo = babyai.rl.PPOAlgo(envs, acmodel, args.frames_per_proc, args.discount, args.lr, args.beta1, args.beta2,
                              args.gae_lambda,

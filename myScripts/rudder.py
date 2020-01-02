@@ -50,6 +50,8 @@ class Net(torch.nn.Module):
         # After the LSTM layer, we add a fully connected output layer
         self.myLstm1=torch.nn.LSTM(embed_dim + action_dim,n_lstm*2)
         self.myLstm2=torch.nn.LSTM(n_lstm*2,n_lstm)
+        self.myGRU=torch.nn.GRU(embed_dim + action_dim,n_lstm*2)
+        self.myGRU2 = torch.nn.GRU(n_lstm * 2, n_lstm)
         self.fc_out = torch.nn.Linear(n_lstm, 1)
 
     def forward(self, observations, actions):

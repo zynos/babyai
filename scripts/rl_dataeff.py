@@ -10,7 +10,7 @@ import numpy
 parser = argparse.ArgumentParser("Analyze data efficiency of reinforcement learning")
 parser.add_argument("--path", default='.')
 parser.add_argument("--regex", default='.*')
-parser.add_argument("--window", type=int, default=100)
+parser.add_argument("--window", type=int, default=30)
 parser.add_argument("report")
 args = parser.parse_args()
 

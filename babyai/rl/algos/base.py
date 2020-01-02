@@ -11,7 +11,8 @@ class BaseAlgo(ABC):
     """The base class for RL algorithms."""
 
     def __init__(self, envs, acmodel, num_frames_per_proc, discount, lr, gae_lambda, entropy_coef,
-                 value_loss_coef, max_grad_norm, recurrence, preprocess_obss, reshape_reward, aux_info,use_rudder=False):
+                 value_loss_coef, max_grad_norm, recurrence, preprocess_obss, reshape_reward, aux_info,
+                 use_rudder=False):
         """
         Initializes a `BaseAlgo` instance.
 
@@ -133,18 +134,43 @@ class BaseAlgo(ABC):
         embeddings = []
         actions = []
         rewards = []
-        images=[]
-        instructs=[]
+        images = []
+        instructs = []
 
         def lossfunction(predictions, rewards):
-            rewards = torch.tensor(rewards, device=self.device).reshape(1,-1,1)
-            returns = rewards.sum(dim=1)
-            # Main task: predicting return at last timestep
-            main_loss = torch.mean(predictions[:, -1] - returns) ** 2
-            # Auxiliary task: predicting final return at every timestep ([..., None] is for correct broadcasting)
-            aux_loss = torch.mean(predictions[:, :] - returns[..., None]) ** 2
-            # Combine losses
-            loss = main_loss + aux_loss * 0.5
+            # rewards = torch.tensor(rewards, device=self.device).reshape(1,-1,1)
+            # returns = rewards.sum(dim=1)
+            # # Main task: predicting return at last timestep
+            # main_loss = torch.mean(predictions[:, -1] - returns) ** 2
+            # # Auxiliary task: predicting final return at every timestep ([..., None] is for correct broadcasting)
+            # aux_loss = torch.mean(predictions[:, :] - returns[..., None]) ** 2
+            # # Combine losses
+            # loss = main_loss + aux_loss * 0.5
+            newPreds = []
+            newRews = []
+            for j, r in enumerate(rewards):
+                idx = (r > 0).nonzero()
+                start = 0
+                for i in idx:
+                    target = torch.zeros(len(r))
+                    chunk = predictions[j][start:i + 1]
+                    target[:len(chunk)] = chunk.squeeze()
+                    newPreds.append(target)
+                    target = torch.zeros(len(r))
+                    chunk = r[start:i + 1]
+                    target[:len(chunk)] = chunk
+                    newRews.append(target)
+                    start = i + 2
+                    # if start>len(r)-1:
+                    #     break
+
+            newRews = torch.stack(newRews)
+            li = newRews > 0
+            newPreds = torch.stack(newPreds)
+            diff = newRews[li] - newPreds[li]
+            print("predicted rew mean",newPreds.mean())
+            l = torch.sum(diff ** 2)
+            return l
             return loss
 
         def create_proc_dict(alls):
@@ -156,50 +182,48 @@ class BaseAlgo(ABC):
                     except:
                         procDict[i] = [process]
             return procDict
-        def do_my_stuff2(images,instrs):
+
+        def do_my_stuff2(images, instrs):
             rewards2 = [torch.tensor(r, device=self.device).float() for r in rewards]
             rews = torch.stack(rewards2).transpose(0, 1)
             rew_mean = rews.mean()
-            if rew_mean>0.15:
+            if rew_mean > 0.15:
                 optimizer = torch.optim.Adam(self.rudder2.parameters(), lr=1e-3, weight_decay=1e-5)
 
                 optimizer.zero_grad()
                 acts = torch.stack(actions).transpose(0, 1).detach().clone()
-                images=torch.stack(images).transpose(0, 1).detach().clone()
-                instrs=instrs.detach().clone()
-                pred=self.rudder2.forward(images,instrs,acts)
-                rewards2=[torch.tensor(r,device=self.device).float() for r in rewards]
-                rews=torch.stack(rewards2).transpose(0,1)
-                rew_mean=rews.mean()
+                images = torch.stack(images).transpose(0, 1).detach().clone()
+                instrs = instrs.detach().clone()
+                pred = self.rudder2.forward(images, instrs, acts)
+                rewards2 = [torch.tensor(r, device=self.device).float() for r in rewards]
+                rews = torch.stack(rewards2).transpose(0, 1)
+                rew_mean = rews.mean()
                 loss = lossfunction(pred, rews)
                 loss.backward()
                 self.running_loss = self.running_loss * 0.99 + loss * 0.01
                 optimizer.step()
-                print("runn loss,loss,rew mean",self.running_loss.item(),loss.item(),rew_mean)
+                print("runn loss,loss,rew mean", self.running_loss.item(), loss.item(), rew_mean)
 
-
+        optimizer = torch.optim.Adam(self.rudder.parameters(), lr=1e-5, weight_decay=1e-5)
         def do_my_stuff():
-            acDict = create_proc_dict(actions)
-            retDict = create_proc_dict(rewards)
-            rewards2=[torch.tensor(r,device=self.device).float() for r in rewards]
-            embDict = create_proc_dict(embeddings)
-            embs=torch.stack(embeddings).transpose(0,1)
-            acts=torch.stack(actions).transpose(0,1)
-            rews=torch.stack(rewards2).transpose(0,1)
-            optimizer = torch.optim.Adam(self.rudder.parameters(), lr=1e-3, weight_decay=1e-5)
+            rewards2 = [torch.tensor(r, device=self.device).float() for r in rewards]
+            rews = torch.stack(rewards2).transpose(0, 1)
+            rew_mean = rews.mean()
 
-            optimizer.zero_grad()
-            losses=[]
-            for proc in range(self.num_procs):
+            if rew_mean > 0.12:
+                embs = torch.stack(embeddings).transpose(0, 1)
+                acts = torch.stack(actions).transpose(0, 1)
+                # optimizer = torch.optim.Adam(self.rudder.parameters(), lr=1e-3)
+
+                optimizer.zero_grad()
                 pred = self.rudder(embs, acts)
                 loss = lossfunction(pred, rews)
-                losses.append(loss.item())
                 loss.backward()
-                self.running_loss = self.running_loss * 0.99 + loss * 0.01
                 optimizer.step()
+                with torch.no_grad():
+                    self.running_loss = self.running_loss * 0.99 + loss * 0.01
 
-            print("loss mean",(sum(losses)/len(losses)))
-
+                print("runn loss,loss,rew mean", self.running_loss.item(), loss.item(), rew_mean)
 
         for i in range(self.num_frames_per_proc):
             # Do one agent-environment interaction
@@ -266,7 +290,7 @@ class BaseAlgo(ABC):
             self.log_episode_num_frames *= self.mask
 
         # Add advantage and return to experiences
-        if self.use_rudder==True:
+        if self.use_rudder == True:
             do_my_stuff()
             # do_my_stuff2(images,preprocessed_obs.instr)
         preprocessed_obs = self.preprocess_obss(self.obs, device=self.device)
