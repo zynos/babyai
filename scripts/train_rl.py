@@ -46,10 +46,10 @@ args = parser.parse_args()
 
 utils.seed(args.seed)
 
-use_bert = False
+use_bert = True
 bert_dim = 512
 use_rudder= True
-use_reshaped_reward = False
+use_reshaped_reward = True
 # Generate environments
 envs = []
 for i in range(args.procs):

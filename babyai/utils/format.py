@@ -63,7 +63,8 @@ class InstructionsPreprocessor(object):
         max_instr_len = 0
         if self.use_bert:
             instrs = transform_obs(obss,self.bert_dim)
-            instrs = torch.tensor(torch.stack(instrs),device=device)
+            instrs = torch.stack(instrs).clone().detach()
+            # instrs = torch.sourceTensor.clone(torch.tensor(torch.stack(instrs),device=device)).detach()
 
         else:
 

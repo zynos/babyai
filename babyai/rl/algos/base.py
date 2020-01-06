@@ -148,30 +148,37 @@ class BaseAlgo(ABC):
             # loss = main_loss + aux_loss * 0.5
             newPreds = []
             newRews = []
+            auxRews = []
             for j, r in enumerate(rewards):
                 idx = (r > 0).nonzero()
                 start = 0
                 for i in idx:
                     target = torch.zeros(len(r))
+                    aux_target = torch.zeros(len(r))
                     chunk = predictions[j][start:i + 1]
                     target[:len(chunk)] = chunk.squeeze()
                     newPreds.append(target)
                     target = torch.zeros(len(r))
+                    aux_chunk = r[i].repeat(i-start+1)
+                    aux_target[:len(aux_chunk)] = aux_chunk
+                    auxRews.append(aux_target)
                     chunk = r[start:i + 1]
                     target[:len(chunk)] = chunk
                     newRews.append(target)
                     start = i + 2
                     # if start>len(r)-1:
-                    #     break
+                    #     break [0,0,1] [1,1,1] [0,1,1]
 
             newRews = torch.stack(newRews)
+            auxRews = torch.stack(auxRews)
             li = newRews > 0
             newPreds = torch.stack(newPreds)
             diff = newRews[li] - newPreds[li]
             print("predicted rew mean",newPreds.mean())
-            l = torch.sum(diff ** 2)
-            return l
-            return loss
+
+            aux=torch.mean((auxRews-newPreds)**2)
+            l = torch.mean(diff**2 )
+            return l+0.5*aux
 
         def create_proc_dict(alls):
             procDict = dict()
@@ -210,18 +217,23 @@ class BaseAlgo(ABC):
             rews = torch.stack(rewards2).transpose(0, 1)
             rew_mean = rews.mean()
 
-            if rew_mean > 0.12:
+            if rew_mean > 0.05:
                 embs = torch.stack(embeddings).transpose(0, 1)
                 acts = torch.stack(actions).transpose(0, 1)
-                # optimizer = torch.optim.Adam(self.rudder.parameters(), lr=1e-3)
-
                 optimizer.zero_grad()
                 pred = self.rudder(embs, acts)
+
                 loss = lossfunction(pred, rews)
                 loss.backward()
                 optimizer.step()
                 with torch.no_grad():
+                    self.rudder_rewards = torch.tensor(pred.squeeze()).clone().detach()
+                    if self.reshape_reward is not None:
+                        self.rewards = self.rudder_rewards.transpose(0,1)*20.0
+                    else:
+                        self.rewards = self.rudder_rewards.transpose(0, 1)
                     self.running_loss = self.running_loss * 0.99 + loss * 0.01
+                    # self.rewards = self.rudder(embs, acts).squeeze().transpose(0, 1)
 
                 print("runn loss,loss,rew mean", self.running_loss.item(), loss.item(), rew_mean)
 
@@ -260,6 +272,7 @@ class BaseAlgo(ABC):
             self.mask = 1 - torch.tensor(done, device=self.device, dtype=torch.float)
             self.actions[i] = action
             self.values[i] = value
+            bla = self.rewards[i]
             if self.reshape_reward is not None:
                 self.rewards[i] = torch.tensor([
                     self.reshape_reward(obs_, action_, reward_, done_)
@@ -307,6 +320,7 @@ class BaseAlgo(ABC):
 
         # Flatten the data correctly, making sure that
         # each episode's data is a continuous chunk
+        # experiences exps
         exps = DictList()
         exps.obs = [self.obss[i][j]
                     for j in range(self.num_procs)
