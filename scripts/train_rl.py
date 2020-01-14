@@ -49,7 +49,7 @@ utils.seed(args.seed)
 use_bert = False
 bert_dim = 512
 use_rudder= True
-rudder_own_net = False
+rudder_own_net = True
 use_reshaped_reward = True
 # Generate environments
 envs = []

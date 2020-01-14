@@ -76,7 +76,7 @@ class BaseAlgo(ABC):
         if self.rudder_own_net:
             self.rudder = Net(128 * 2, 7, 128 * 2, device=self.device, own_net=self.rudder_own_net).to(self.device)
         else:
-            self.rudder = Net(128, 7, 256, own_net=self.rudder_own_net).cuda()
+            self.rudder = Net(128, 7, 256, device=self.device,own_net=self.rudder_own_net).to(self.device)
 
         self.running_loss = 100.
         self.use_rudder = use_rudder
@@ -150,11 +150,10 @@ class BaseAlgo(ABC):
             with torch.no_grad():
                 self.rudder_rewards = pred.squeeze().clone().detach()
 
-                # if self.reshape_reward is not None:
-                #     self.rewards = self.rudder_rewards.transpose(0, 1) * 20.0
-                # else:
-                #     self.rewards = self.rudder_rewards.transpose(0, 1)
-                # self.rewards = self.rudder(embs, acts).squeeze().transpose(0, 1)
+                if self.reshape_reward is not None:
+                    self.rewards = self.rudder_rewards.transpose(0, 1) * 20.0
+                else:
+                    self.rewards = self.rudder_rewards.transpose(0, 1)
 
             self.running_loss = self.running_loss * 0.99 + loss * 0.01
 

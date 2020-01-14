@@ -5,7 +5,7 @@ from myScripts.preProcess import PreProcess
 
 
 class Net(torch.nn.Module):
-    def __init__(self, embed_dim, action_dim, n_lstm, image_dim=128,device="cpu",own_net=True):
+    def __init__(self, embed_dim, action_dim, n_lstm, image_dim=128,device="gpu",own_net=True):
         super(Net, self).__init__()
         self.device = device
         self.preProcess = PreProcess(self.device)
@@ -17,7 +17,7 @@ class Net(torch.nn.Module):
 
         # This will create an LSTM layer where we will feed the concatenate
         self.lstm1 = LSTMLayer(
-            in_features=embed_dim + action_dim, out_features=n_lstm, inputformat='NLC',
+            in_features=embed_dim + action_dim, out_features=n_lstm*2, inputformat='NLC',
             # cell input: initialize weights to forward inputs with xavier, disable connections to recurrent inputs
             w_ci=(torch.nn.init.xavier_normal_, False),
             # input gate: disable connections to forward inputs, initialize weights to recurrent inputs with xavier
@@ -66,7 +66,7 @@ class Net(torch.nn.Module):
         self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-5, weight_decay=1e-5)
 
 
-    def forward1(self, observations, actions):
+    def forward_no_own_net(self, observations, actions):
         # observations=torch.stack(observations)
         # actions=torch.stack(actions)
 
@@ -87,7 +87,7 @@ class Net(torch.nn.Module):
         net_out = self.fc_out(lstm_out)
         return net_out
 
-    def forward2(self, image, instr, actions):
+    def forward_own_net(self, image, instr, actions):
         all_ims = []
         all_instrs = []
 
@@ -102,16 +102,18 @@ class Net(torch.nn.Module):
         one_hot = torch.nn.functional.one_hot(actions, 7).float()
         # x = x.reshape(x.shape[0], -1)
         input = torch.cat([all_ims, all_instrs, one_hot], dim=-1)
-        # lstm_out, *_ = self.lstm1(input,
-        #                           return_all_seq_pos=True  # return predictions for all sequence positions
-        #                           )
-        lstm_out,_=self.myLstm1(input)
-        lstm_out,_ = self.myLstm2(lstm_out)
+        lstm_out, *_ = self.lstm1(input,
+                                  return_all_seq_pos=True  # return predictions for all sequence positions
+                                  )
+        lstm_out, *_ = self.lstm2(lstm_out,
+                                  return_all_seq_pos=True  # return predictions for all sequence positions
+                                  )
+        # lstm_out,_=self.myLstm1(input)
+        # lstm_out,_ = self.myLstm2(lstm_out)
 
         net_out = self.fc_out(lstm_out)
         return net_out
 
-        return x
     def do_optimization(self,pred,i):
         # preds.append(pred)
 
@@ -165,23 +167,60 @@ class Net(torch.nn.Module):
         if len(self.replay_buffer)>0:
             batch,i=self.sample_from_replay_buffer()
             if self.own_net:
-                pred=self.forward2(*batch)
+                pred=self.forward_own_net(*batch)
                 loss=self.do_optimization(pred,i)
             else:
-                pred = self.forward1(*batch)
+                pred = self.forward_no_own_net(*batch)
                 loss=self.do_optimization(pred,i)
 
         if self.own_net:
-            pred = self.forward2(*argv)
+            pred = self.forward_own_net(*argv)
         else:
-            pred = self.forward1(*argv)
+            pred = self.forward_no_own_net(*argv)
         with torch.no_grad():
             loss,_=self.lossfunction(pred,self.replay_rewards[-1])
         self.extend_replay_buffers(argv,loss)
         # print(["{:.3f}".format(p) for p in self.losses_and_mean_dists])
         return pred
+    def lossfunction(self,predictions,rewards):
+        predictions=predictions.squeeze()
+        # print("rews",list(rewards[0][-10:]))
+        # print("pred", list(predictions[0][-10:]))
+        # main loss: estimate correct end reward
+        # we get rewards like [0,0,0,0.9,0,0,0,0,0,0.89 ...]
+        idx= rewards>0
+        if rewards.max() > 0:
+            main=(rewards[idx]-predictions[idx])**2
+        else:
+            return 0,(0,0)
+            main=torch.tensor(0,device=self.device)
+        aux_rewards=[]
+        for r in rewards:
+            idx=(r > 0).nonzero()
+            new_pred_part=[]
+            start=0
+            for i in idx:
+                lis=r[i].repeat(i - start + 1)
+                new_pred_part.append(lis)
+                start=i
+            if r.max()>0:
+                new_pred_part=torch.cat(new_pred_part)
+            else:
+                new_pred_part=torch.zeros(len(r),device=self.device)
+            new_pred_part=torch.cat([new_pred_part,torch.zeros(len(r),device=self.device)])
+            aux_rewards.append(new_pred_part[:40])
+        aux_rewards=torch.stack(aux_rewards)
+        aux=torch.mean((aux_rewards-predictions)**2)
+        main=torch.mean(main)
+        loss=main+0.5*aux
+        return loss,(main,aux)
 
-    def lossfunction(self,predictions, rewards):
+
+
+
+
+
+    def lossfunction1(self,predictions, rewards):
         # rewards = torch.tensor(rewards, device=self.device).reshape(1,-1,1)
         # returns = rewards.sum(dim=1)
         # # Main task: predicting return at last timestep
