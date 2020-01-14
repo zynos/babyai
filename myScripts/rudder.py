@@ -5,10 +5,15 @@ from myScripts.preProcess import PreProcess
 
 
 class Net(torch.nn.Module):
-    def __init__(self, embed_dim, action_dim, n_lstm, image_dim=128,device="cpu"):
+    def __init__(self, embed_dim, action_dim, n_lstm, image_dim=128,device="cpu",own_net=True):
         super(Net, self).__init__()
         self.device = device
         self.preProcess = PreProcess(self.device)
+        self.own_net = own_net
+        self.replay_buffer = []
+        self.replay_rewards = []
+        self.losses_and_mean_dists=[]
+
 
         # This will create an LSTM layer where we will feed the concatenate
         self.lstm1 = LSTMLayer(
@@ -47,14 +52,21 @@ class Net(torch.nn.Module):
             nn.ReLU()
         )
 
+        encoder_layer = nn.TransformerEncoderLayer(d_model=128+action_dim, nhead=5)
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=6)
+
+
         # After the LSTM layer, we add a fully connected output layer
         self.myLstm1=torch.nn.LSTM(embed_dim + action_dim,n_lstm*2)
         self.myLstm2=torch.nn.LSTM(n_lstm*2,n_lstm)
         self.myGRU=torch.nn.GRU(embed_dim + action_dim,n_lstm*2)
         self.myGRU2 = torch.nn.GRU(n_lstm * 2, n_lstm)
         self.fc_out = torch.nn.Linear(n_lstm, 1)
+        self.fc_out_trans = torch.nn.Linear(embed_dim + action_dim, 1)
+        self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-5, weight_decay=1e-5)
 
-    def forward(self, observations, actions):
+
+    def forward1(self, observations, actions):
         # observations=torch.stack(observations)
         # actions=torch.stack(actions)
 
@@ -70,6 +82,8 @@ class Net(torch.nn.Module):
         #                           )
         # lstm_out,_=self.myLstm1(input)
         # lstm_out,_ = self.myLstm2(lstm_out)
+        # transfomer_out = self.transformer_encoder(input)
+        # net_out= self.fc_out_trans(transfomer_out)
         net_out = self.fc_out(lstm_out)
         return net_out
 
@@ -88,11 +102,128 @@ class Net(torch.nn.Module):
         one_hot = torch.nn.functional.one_hot(actions, 7).float()
         # x = x.reshape(x.shape[0], -1)
         input = torch.cat([all_ims, all_instrs, one_hot], dim=-1)
-        lstm_out, *_ = self.lstm1(input,
-                                  return_all_seq_pos=True  # return predictions for all sequence positions
-                                  )
+        # lstm_out, *_ = self.lstm1(input,
+        #                           return_all_seq_pos=True  # return predictions for all sequence positions
+        #                           )
+        lstm_out,_=self.myLstm1(input)
+        lstm_out,_ = self.myLstm2(lstm_out)
 
         net_out = self.fc_out(lstm_out)
         return net_out
 
         return x
+    def do_optimization(self,pred,i):
+        # preds.append(pred)
+
+        loss, (l, aux) = self.lossfunction(pred, self.replay_rewards[i])
+        self.rudder_loss = loss.item()
+        loss.backward()
+        self.optimizer.step()
+        self.optimizer.zero_grad()
+        return loss
+
+    def calc_reward_mean_dist(self):
+        current=torch.mean(self.replay_rewards[-1])
+        mean = torch.mean(torch.stack(self.replay_rewards[:-1]))
+        return torch.abs(mean-current)
+
+    def extend_replay_buffers(self,argv,loss):
+        limit=50
+        if len(self.replay_buffer)>=limit:
+            mean_dist = self.calc_reward_mean_dist()
+            score = mean_dist + loss.item()
+            minimum=min(self.losses_and_mean_dists)
+            if score>minimum:
+                idx=self.losses_and_mean_dists.index(minimum)
+                self.replay_buffer[idx]=argv
+                self.replay_rewards[idx]=self.replay_rewards[-1]
+                self.losses_and_mean_dists[idx]=score.item()
+            self.replay_rewards=self.replay_rewards[:-1]
+
+        else:
+            if len(self.replay_buffer)==0:
+                self.losses_and_mean_dists.append(loss.item())
+            else:
+                self.losses_and_mean_dists.append(loss.item()+self.calc_reward_mean_dist().item())
+            self.replay_buffer.append(argv)
+        assert len(self.losses_and_mean_dists)<limit+1
+        assert len(self.replay_rewards) < limit+1
+        assert len(self.replay_buffer) < limit+1
+
+    def sample_from_replay_buffer(self):
+        probs=torch.nn.functional.softmax(torch.tensor(self.losses_and_mean_dists))
+        m = torch.distributions.Categorical(probs)
+        idx = m.sample().item()
+        print(idx)
+        return self.replay_buffer[idx],idx
+
+
+
+
+
+    def forward(self, *argv):
+        if len(self.replay_buffer)>0:
+            batch,i=self.sample_from_replay_buffer()
+            if self.own_net:
+                pred=self.forward2(*batch)
+                loss=self.do_optimization(pred,i)
+            else:
+                pred = self.forward1(*batch)
+                loss=self.do_optimization(pred,i)
+
+        if self.own_net:
+            pred = self.forward2(*argv)
+        else:
+            pred = self.forward1(*argv)
+        with torch.no_grad():
+            loss,_=self.lossfunction(pred,self.replay_rewards[-1])
+        self.extend_replay_buffers(argv,loss)
+        # print(["{:.3f}".format(p) for p in self.losses_and_mean_dists])
+        return pred
+
+    def lossfunction(self,predictions, rewards):
+        # rewards = torch.tensor(rewards, device=self.device).reshape(1,-1,1)
+        # returns = rewards.sum(dim=1)
+        # # Main task: predicting return at last timestep
+        # main_loss = torch.mean(predictions[:, -1] - returns) ** 2
+        # # Auxiliary task: predicting final return at every timestep ([..., None] is for correct broadcasting)
+        # aux_loss = torch.mean(predictions[:, :] - returns[..., None]) ** 2
+        # # Combine losses
+        # loss = main_loss + aux_loss * 0.5
+        newPreds = []
+        newRews = []
+        auxRews = []
+        for j, r in enumerate(rewards):
+            idx = (r > 0).nonzero()
+            start = 0
+            for i in idx:
+                target = torch.zeros(len(r))
+                aux_target = torch.zeros(len(r))
+                chunk = predictions[j][start:i + 1]
+                target[:len(chunk)] = chunk.squeeze()
+                newPreds.append(target)
+                target = torch.zeros(len(r))
+                aux_chunk = r[i].repeat(i - start + 1)
+                aux_target[:len(aux_chunk)] = aux_chunk
+                auxRews.append(aux_target)
+                chunk = r[start:i + 1]
+                target[:len(chunk)] = chunk
+                newRews.append(target)
+                start = i + 2
+                # if start>len(r)-1:
+                #     break [0,0,1] [1,1,1] [0,1,1]
+        if len(newRews)==0:
+            diff= torch.mean((predictions.squeeze()-rewards)**2)
+            loss = diff/ len(rewards[0])
+            aux = diff
+            return loss + 0.5 * aux, (loss, aux)
+        newRews = torch.stack(newRews)
+        auxRews = torch.stack(auxRews)
+        li = newRews > 0
+        newPreds = torch.stack(newPreds)
+        diff = newRews[li] - newPreds[li]
+        # print("predicted rew mean",newPreds.mean().item())
+
+        aux = torch.mean((auxRews - newPreds) ** 2)
+        l = torch.mean(diff ** 2)
+        return l + 0.5 * aux, (l, aux)

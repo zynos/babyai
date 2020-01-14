@@ -14,12 +14,12 @@ class PPOAlgo(BaseAlgo):
                  gae_lambda=0.95,
                  entropy_coef=0.01, value_loss_coef=0.5, max_grad_norm=0.5, recurrence=4,
                  adam_eps=1e-5, clip_eps=0.2, epochs=4, batch_size=256, preprocess_obss=None,
-                 reshape_reward=None, aux_info=None,use_rudder=False):
+                 reshape_reward=None, aux_info=None,use_rudder=False,rudder_own_net=False):
         num_frames_per_proc = num_frames_per_proc or 128
 
         super().__init__(envs, acmodel, num_frames_per_proc, discount, lr, gae_lambda, entropy_coef,
                          value_loss_coef, max_grad_norm, recurrence, preprocess_obss, reshape_reward,
-                         aux_info,use_rudder)
+                         aux_info,use_rudder,rudder_own_net)
 
         self.clip_eps = clip_eps
         self.epochs = epochs
@@ -45,7 +45,7 @@ class PPOAlgo(BaseAlgo):
         being the added information. They are either (n_procs * n_frames_per_proc) 1D tensors or
         (n_procs * n_frames_per_proc) x k 2D tensors where k is the number of classes for multiclass classification
         '''
-
+        rudder_losses = []
         for _ in range(self.epochs):
             # Initialize log values
 
@@ -56,6 +56,8 @@ class PPOAlgo(BaseAlgo):
             log_grad_norms = []
 
             log_losses = []
+
+            rudder_losses.append(logs["RUD_L"])
 
             '''
             For each epoch, we create int(total_frames / batch_size + 1) batches, each of size batch_size (except
@@ -150,7 +152,7 @@ class PPOAlgo(BaseAlgo):
         logs["value_loss"] = numpy.mean(log_value_losses)
         logs["grad_norm"] = numpy.mean(log_grad_norms)
         logs["loss"] = numpy.mean(log_losses)
-
+        logs["RUD_L"] = numpy.mean(rudder_losses)
         return logs
 
     def _get_batches_starting_indexes(self):

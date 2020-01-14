@@ -46,9 +46,10 @@ args = parser.parse_args()
 
 utils.seed(args.seed)
 
-use_bert = True
+use_bert = False
 bert_dim = 512
 use_rudder= True
+rudder_own_net = False
 use_reshaped_reward = True
 # Generate environments
 envs = []
@@ -114,7 +115,7 @@ if args.algo == "ppo":
                              args.gae_lambda,
                              args.entropy_coef, args.value_loss_coef, args.max_grad_norm, args.recurrence,
                              args.optim_eps, args.clip_eps, args.ppo_epochs, args.batch_size, obss_preprocessor,
-                             reshape_reward,use_rudder=use_rudder)
+                             reshape_reward,use_rudder=use_rudder,rudder_own_net=rudder_own_net)
 else:
     raise ValueError("Incorrect algorithm name: {}".format(args.algo))
 
@@ -141,7 +142,8 @@ header = (["update", "episodes", "frames", "FPS", "duration"]
           + ["return_" + stat for stat in ['mean', 'std', 'min', 'max']]
           + ["success_rate"]
           + ["num_frames_" + stat for stat in ['mean', 'std', 'min', 'max']]
-          + ["entropy", "value", "policy_loss", "value_loss", "loss", "grad_norm"])
+          + ["entropy", "value", "policy_loss", "value_loss", "loss", "grad_norm"]
+          + ["RUD_L"])
 if args.tb:
     from tensorboardX import SummaryWriter
 
@@ -210,11 +212,11 @@ while status['num_frames'] < args.frames:
                 success_per_episode['mean'],
                 *num_frames_per_episode.values(),
                 logs["entropy"], logs["value"], logs["policy_loss"], logs["value_loss"],
-                logs["loss"], logs["grad_norm"]]
+                logs["loss"], logs["grad_norm"],logs["RUD_L"]]
 
         format_str = ("U {} | E {} | F {:06} | FPS {:04.0f} | D {} | R:xsmM {: .2f} {: .2f} {: .2f} {: .2f} | "
                       "S {:.2f} | F:xsmM {:.1f} {:.1f} {} {} | H {:.3f} | V {:.3f} | "
-                      "pL {: .3f} | vL {:.3f} | L {:.3f} | gN {:.3f} | ")
+                      "pL {: .3f} | vL {:.3f} | L {:.3f} | gN {:.3f} | RUD_L {:.3f}")
 
         logger.info(format_str.format(*data))
         if args.tb:
