@@ -98,7 +98,7 @@ class Net(torch.nn.Module):
 
         all_ims = torch.stack(all_ims)
         all_instrs = self.preProcess.get_gru_embedding(instr)
-        all_instrs = all_instrs.unsqueeze(1).repeat(1, 40, 1)
+        all_instrs = all_instrs.unsqueeze(1).repeat(1, all_ims.shape[1], 1)
         one_hot = torch.nn.functional.one_hot(actions, 7).float()
         # x = x.reshape(x.shape[0], -1)
         input = torch.cat([all_ims, all_instrs, one_hot], dim=-1)
@@ -130,7 +130,7 @@ class Net(torch.nn.Module):
         return torch.abs(mean-current)
 
     def extend_replay_buffers(self,argv,loss):
-        limit=50
+        limit=100
         if len(self.replay_buffer)>=limit:
             mean_dist = self.calc_reward_mean_dist()
             score = mean_dist + loss.item()
@@ -148,6 +148,7 @@ class Net(torch.nn.Module):
             else:
                 self.losses_and_mean_dists.append(loss.item()+self.calc_reward_mean_dist().item())
             self.replay_buffer.append(argv)
+            print("repl bu len",len(self.replay_buffer))
         assert len(self.losses_and_mean_dists)<limit+1
         assert len(self.replay_rewards) < limit+1
         assert len(self.replay_buffer) < limit+1
@@ -161,17 +162,20 @@ class Net(torch.nn.Module):
 
 
 
-
+    def train_one_old_sample_from_replay(self):
+        batch, i = self.sample_from_replay_buffer()
+        if self.own_net:
+            pred = self.forward_own_net(*batch)
+            loss = self.do_optimization(pred, i)
+        else:
+            pred = self.forward_no_own_net(*batch)
+            loss = self.do_optimization(pred, i)
 
     def forward(self, *argv):
         if len(self.replay_buffer)>0:
-            batch,i=self.sample_from_replay_buffer()
-            if self.own_net:
-                pred=self.forward_own_net(*batch)
-                loss=self.do_optimization(pred,i)
-            else:
-                pred = self.forward_no_own_net(*batch)
-                loss=self.do_optimization(pred,i)
+            self.train_one_old_sample_from_replay()
+        if len(self.replay_buffer)>80:
+            print("")
 
         if self.own_net:
             pred = self.forward_own_net(*argv)
@@ -182,7 +186,16 @@ class Net(torch.nn.Module):
         self.extend_replay_buffers(argv,loss)
         # print(["{:.3f}".format(p) for p in self.losses_and_mean_dists])
         return pred
+
+
+
+
     def lossfunction(self,predictions,rewards):
+        return rewards[0][-1]-torch.sum(predictions),(1.337,6.66)
+
+
+
+    def lossfunction2(self,predictions,rewards):
         predictions=predictions.squeeze()
         # print("rews",list(rewards[0][-10:]))
         # print("pred", list(predictions[0][-10:]))
@@ -192,7 +205,7 @@ class Net(torch.nn.Module):
         if rewards.max() > 0:
             main=(rewards[idx]-predictions[idx])**2
         else:
-            return 0,(0,0)
+            return torch.tensor(0,device=self.device),(torch.tensor(0,device=self.device),torch.tensor(0,device=self.device))
             main=torch.tensor(0,device=self.device)
         aux_rewards=[]
         for r in rewards:

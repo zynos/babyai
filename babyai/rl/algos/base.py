@@ -149,11 +149,11 @@ class BaseAlgo(ABC):
             self.rudder.optimizer.step()
             with torch.no_grad():
                 self.rudder_rewards = pred.squeeze().clone().detach()
-                if len(self.rudder.replay_buffer)>39:
-                    if self.reshape_reward is not None:
-                        self.rewards = self.rudder_rewards.transpose(0, 1) * 20.0
-                    else:
-                        self.rewards = self.rudder_rewards.transpose(0, 1)
+                # if len(self.rudder.replay_buffer)>39:
+                #     if self.reshape_reward is not None:
+                #         self.rewards = self.rudder_rewards.transpose(0, 1) * 20.0
+                #     else:
+                #         self.rewards = self.rudder_rewards.transpose(0, 1)
 
             self.running_loss = self.running_loss * 0.99 + loss * 0.01
 
@@ -164,7 +164,7 @@ class BaseAlgo(ABC):
             rewards2 = [torch.tensor(r, device=self.device).float() for r in rewards]
             rews = torch.stack(rewards2).transpose(0, 1)
             rew_mean = rews.mean()
-            if rew_mean > 0.0:
+            if rew_mean >= 0.0:
                 self.rudder.optimizer.zero_grad()
                 acts = torch.stack(actions).transpose(0, 1).detach().clone()
                 images = torch.stack(images).transpose(0, 1).detach().clone()
@@ -178,7 +178,7 @@ class BaseAlgo(ABC):
             rews = torch.stack(rewards2).transpose(0, 1)
             rew_mean = rews.mean()
             logger_rew_mean=sum(self.log_return) / len(self.log_return)
-            if logger_rew_mean > 0.0:
+            if logger_rew_mean >= 0.0:
                 embs = torch.stack(embeddings).transpose(0, 1)
                 acts = torch.stack(actions).transpose(0, 1)
                 self.rudder.optimizer.zero_grad()
@@ -204,6 +204,8 @@ class BaseAlgo(ABC):
             images.append(preprocessed_obs.image)
             instructs.append(preprocessed_obs.instr)
             obs, reward, done, env_info = self.env.step(action.cpu().numpy())
+            if done[0]==True:
+                print("")
             rewards.append(reward)
             if self.aux_info:
                 env_info = self.aux_info_collector.process(env_info)
