@@ -149,11 +149,11 @@ class BaseAlgo(ABC):
             self.rudder.optimizer.step()
             with torch.no_grad():
                 self.rudder_rewards = pred.squeeze().clone().detach()
-
-                if self.reshape_reward is not None:
-                    self.rewards = self.rudder_rewards.transpose(0, 1) * 20.0
-                else:
-                    self.rewards = self.rudder_rewards.transpose(0, 1)
+                if len(self.rudder.replay_buffer)>39:
+                    if self.reshape_reward is not None:
+                        self.rewards = self.rudder_rewards.transpose(0, 1) * 20.0
+                    else:
+                        self.rewards = self.rudder_rewards.transpose(0, 1)
 
             self.running_loss = self.running_loss * 0.99 + loss * 0.01
 
