@@ -39,9 +39,11 @@ class Rudder():
         for i,line in enumerate(rews):
             values, indices = line.max(0)
             if values.item()>0:
+                indices=line.gt(0.0).nonzero()[0].item()+1
                 ims[i][indices:]*=0
                 instrs[i][indices:] *= 0
                 acts[i][indices:] *= 0
+                line[indices:] *= 0
         return  ims, instrs, acts
 
 
@@ -53,7 +55,9 @@ class Rudder():
         self.replay_buffer.append((batch,rews))
         pred=self.network.forward(ims, instrs, acts)
         loss,_=self.lossfunction(pred,rews)
-        print(loss.item())
+        print("loss",loss.item())
+        print("pred",list("{:.2f}".format(p.item()) for p in pred.squeeze()[0][:20]))
+        print("rew ", list("{:.2f}".format(p.item()) for p in rews.squeeze()[0][:20]))
         loss.backward()
         self.optimizer.step()
         self.optimizer.zero_grad()
