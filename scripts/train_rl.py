@@ -115,7 +115,7 @@ if args.algo == "ppo":
                              args.gae_lambda,
                              args.entropy_coef, args.value_loss_coef, args.max_grad_norm, args.recurrence,
                              args.optim_eps, args.clip_eps, args.ppo_epochs, args.batch_size, obss_preprocessor,
-                             reshape_reward,use_rudder=use_rudder,rudder_own_net=rudder_own_net)
+                             reshape_reward,use_rudder=use_rudder,rudder_own_net=rudder_own_net,env_max_steps=env.max_steps)
 else:
     raise ValueError("Incorrect algorithm name: {}".format(args.algo))
 

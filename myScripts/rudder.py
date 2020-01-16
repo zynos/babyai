@@ -13,6 +13,7 @@ class Net(torch.nn.Module):
         self.replay_buffer = []
         self.replay_rewards = []
         self.losses_and_mean_dists=[]
+        self.dones=[]
 
 
         # This will create an LSTM layer where we will feed the concatenate
@@ -148,7 +149,6 @@ class Net(torch.nn.Module):
             else:
                 self.losses_and_mean_dists.append(loss.item()+self.calc_reward_mean_dist().item())
             self.replay_buffer.append(argv)
-            print("repl bu len",len(self.replay_buffer))
         assert len(self.losses_and_mean_dists)<limit+1
         assert len(self.replay_rewards) < limit+1
         assert len(self.replay_buffer) < limit+1
@@ -174,8 +174,6 @@ class Net(torch.nn.Module):
     def forward(self, *argv):
         if len(self.replay_buffer)>0:
             self.train_one_old_sample_from_replay()
-        if len(self.replay_buffer)>80:
-            print("")
 
         if self.own_net:
             pred = self.forward_own_net(*argv)
@@ -191,7 +189,16 @@ class Net(torch.nn.Module):
 
 
     def lossfunction(self,predictions,rewards):
-        return rewards[0][-1]-torch.sum(predictions),(1.337,6.66)
+        # from https://github.com/widmi/rudder-a-practical-tutorial/blob/master/tutorial.ipynb
+        returns = rewards.sum(dim=1)
+        predictions=predictions.squeeze(2)
+        # Main task: predicting return at last timestep
+        main_loss = torch.mean(predictions[:, -1] - returns) ** 2
+        # Auxiliary task: predicting final return at every timestep ([..., None] is for correct broadcasting)
+        aux_loss = torch.mean(predictions[:, :] - returns[..., None]) ** 2
+        # Combine losses
+        loss = main_loss + aux_loss * 0.5
+        return loss,(main_loss,aux_loss)
 
 
 

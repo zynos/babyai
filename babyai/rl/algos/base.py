@@ -5,6 +5,7 @@ from babyai.rl.format import default_preprocess_obss
 from babyai.rl.utils import DictList, ParallelEnv
 from babyai.rl.utils.supervised_losses import ExtraInfoCollector
 from myScripts.rudder import Net
+from myScripts.rudder2 import Rudder
 
 
 class BaseAlgo(ABC):
@@ -12,7 +13,7 @@ class BaseAlgo(ABC):
 
     def __init__(self, envs, acmodel, num_frames_per_proc, discount, lr, gae_lambda, entropy_coef,
                  value_loss_coef, max_grad_norm, recurrence, preprocess_obss, reshape_reward, aux_info,
-                 use_rudder=False,rudder_own_net=False):
+                 use_rudder=False,rudder_own_net=False,env_max_steps=128):
         """
         Initializes a `BaseAlgo` instance.
 
@@ -73,10 +74,11 @@ class BaseAlgo(ABC):
         self.num_procs = len(envs)
         self.num_frames = self.num_frames_per_proc * self.num_procs
         self.rudder_own_net = rudder_own_net
-        if self.rudder_own_net:
-            self.rudder = Net(128 * 2, 7, 128 * 2, device=self.device, own_net=self.rudder_own_net).to(self.device)
-        else:
-            self.rudder = Net(128, 7, 256, device=self.device,own_net=self.rudder_own_net).to(self.device)
+        self.rudder=Rudder(acmodel.instr_dim,7,acmodel.memory_dim,acmodel.image_dim,self.device,env_max_steps,own_net=self.rudder_own_net)
+        # if self.rudder_own_net:
+        #     self.rudder = Net(128 * 2, 7, 128 * 2, device=self.device, own_net=self.rudder_own_net).to(self.device)
+        # else:
+        #     self.rudder = Net(128, 7, 256, device=self.device,own_net=self.rudder_own_net).to(self.device)
 
         self.running_loss = 100.
         self.use_rudder = use_rudder
@@ -140,6 +142,7 @@ class BaseAlgo(ABC):
         rewards = []
         images = []
         instructs = []
+        dones = []
 
 
         def my_evaluate_pred(pred, rews,rew_mean):
@@ -160,10 +163,19 @@ class BaseAlgo(ABC):
             print("runL {:.4f} L {:.4f} rewX {:.4f} l {:.4f}  lAux {:.4f}".format(self.running_loss.item(), loss.item(),
                                                                                   rew_mean.item(), l, aux))
 
-        def do_my_stuff2(images, instrs):
+        def do_my_stuff2(images,instrs):
+            rewards2 = [torch.tensor(r, device=self.device).float() for r in rewards]
+            acts = torch.stack(actions).transpose(0, 1).detach().clone()
+            rews = torch.stack(rewards2).transpose(0, 1)
+            images = torch.stack(images).transpose(0, 1).detach().clone()
+            self.rudder.extend_replay_buffers(rews,images, instrs, acts)
+            self.rudder_loss=0
+
+        def do_my_stuff3(images, instrs):
             rewards2 = [torch.tensor(r, device=self.device).float() for r in rewards]
             rews = torch.stack(rewards2).transpose(0, 1)
             rew_mean = rews.mean()
+
             if rew_mean >= 0.0:
                 self.rudder.optimizer.zero_grad()
                 acts = torch.stack(actions).transpose(0, 1).detach().clone()
@@ -204,9 +216,8 @@ class BaseAlgo(ABC):
             images.append(preprocessed_obs.image)
             instructs.append(preprocessed_obs.instr)
             obs, reward, done, env_info = self.env.step(action.cpu().numpy())
-            if done[0]==True:
-                print("")
             rewards.append(reward)
+            dones.append(done)
             if self.aux_info:
                 env_info = self.aux_info_collector.process(env_info)
                 # env_info = self.process_aux_info(env_info)
