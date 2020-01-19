@@ -52,7 +52,7 @@ class BaseAlgo(ABC):
 
         """
         # Store parameters
-
+        self.rudder_loss = -1337.0
         self.env = ParallelEnv(envs)
         self.acmodel = acmodel
         self.acmodel.train()
@@ -163,12 +163,12 @@ class BaseAlgo(ABC):
             print("runL {:.4f} L {:.4f} rewX {:.4f} l {:.4f}  lAux {:.4f}".format(self.running_loss.item(), loss.item(),
                                                                                   rew_mean.item(), l, aux))
 
-        def do_my_stuff2(images,instrs):
-            rewards2 = [torch.tensor(r, device=self.device).float() for r in rewards]
-            acts = torch.stack(actions).transpose(0, 1).detach().clone()
-            rews = torch.stack(rewards2).transpose(0, 1)
-            images = torch.stack(images).transpose(0, 1).detach().clone()
-            self.rudder.extend_replay_buffers(rews,images, instrs, acts)
+        def do_my_stuff2(action,image,instr,reward,done):
+            # rewards2 = [torch.tensor(r, device=self.device).float() for r in rewards]
+            # acts = torch.stack(actions).transpose(0, 1).detach().clone()
+            # rews = torch.stack(rewards2).transpose(0, 1)
+            # images = torch.stack(images).transpose(0, 1).detach().clone()
+            self.rudder.extend_replay_buffers(reward,image,instr,action,done)
             self.rudder_loss=0
 
         def do_my_stuff3(images, instrs):
@@ -218,6 +218,10 @@ class BaseAlgo(ABC):
             obs, reward, done, env_info = self.env.step(action.cpu().numpy())
             rewards.append(reward)
             dones.append(done)
+
+            do_my_stuff2(action,preprocessed_obs.image,preprocessed_obs.instr,reward,done)
+
+
             if self.aux_info:
                 env_info = self.aux_info_collector.process(env_info)
                 # env_info = self.process_aux_info(env_info)
@@ -265,11 +269,11 @@ class BaseAlgo(ABC):
             self.log_episode_num_frames *= self.mask
 
         # Add advantage and return to experiences
-        if self.use_rudder == True:
-            if self.rudder_own_net:
-                do_my_stuff2(images,preprocessed_obs.instr)
-            else:
-                do_my_stuff()
+        # if self.use_rudder == True:
+        #     if self.rudder_own_net:
+        #         do_my_stuff2(images,preprocessed_obs.instr)
+        #     else:
+        #         do_my_stuff()
         preprocessed_obs = self.preprocess_obss(self.obs, device=self.device)
 
         with torch.no_grad():
