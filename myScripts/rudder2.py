@@ -21,12 +21,13 @@ class Rudder():
         self.actions = []
         self.observations = []
         self.preProcess = PreProcess(self.device)
-        self.optimizer = torch.optim.Adam(self.network.parameters(), lr=1e-5, weight_decay=1e-5)
+        self.optimizer = torch.optim.Adam(self.network.parameters(), lr=1e-4, weight_decay=1e-5)
         self.replay_buffer=[]
         self.updates =0
         self.class1=[]
         self.class0=[]
         self.total_episodes=0
+        self.replay_buffer_dict=dict()
 
     def chunk_pre_replay_buffer(self):
         start=len(self.replay_buffer)*self.max_steps
@@ -109,7 +110,7 @@ class Rudder():
 
 
 
-    def get_buffer_statistics(self):
+    def get_buffer_statistics2(self):
         def get_mean_rew_and_mean_len(name,lis):
             rews=[el[-1] for el in lis]
             mean_rew = np.mean(rews)
@@ -130,11 +131,81 @@ class Rudder():
 
         #class 0
 
+    def get_buffer_statistics(self):
+        def get_mean_rew_and_mean_len(name, lis):
+            rews = [el["rewards"][-1] for el in lis]
+            mean_rew = np.mean(rews)
+            mean_len = np.mean([len(el["rewards"]) for el in lis])
+            total = len(lis)
+            max = np.max(rews)
+            min = np.min(rews)
+            print("class {}  mean episode len {:.2f}, total elements {}  rew mean {:.2f} min {:.2f} max {:.2f}".
+                  format(name, mean_len, total, mean_rew, min, max))
+            return mean_rew, mean_len, len(lis)
+
+        get_mean_rew_and_mean_len("0", self.class0)
+        if len(self.class1) > 0:
+            get_mean_rew_and_mean_len("1", self.class1)
+        else:
+            print("class 1 is empty")
+
+    def online_learning(self):
+        for sample in self.class1:
+            ims, instrs, acts, rews = sample["images"],sample["instruction"],sample["actions"],sample["rewards"]
+            ims=torch.stack(ims).unsqueeze(0)
+            instrs = torch.tensor(instrs,device=self.device).unsqueeze(0)
+            acts = torch.stack(acts).unsqueeze(0)
+            rews = torch.tensor(rews,device=self.device).unsqueeze(0)
+            pred = self.network.forward(ims, instrs, acts)
+            loss, _ = self.lossfunction(pred, rews)
+            print("loss",loss)
+            loss.backward()
+            self.optimizer.step()
+            self.optimizer.zero_grad()
+
+    def train_ruddi_from_buffi(self):
+        self.online_learning()
+
+    def extend_replay_buffers(self,rewards, ims, instrs, acts, dones):
+        def append():
+            self.replay_buffer_dict[i]["images"].append(ims[i])
+            self.replay_buffer_dict[i]["instruction"]=instrs[i]
+            self.replay_buffer_dict[i]["actions"].append(acts[i])
+            self.replay_buffer_dict[i]["rewards"].append(rewards[i])
+        def init():
+            self.replay_buffer_dict[i]=dict()
+            self.replay_buffer_dict[i]["images"]=[]
+            self.replay_buffer_dict[i]["instruction"]=[]
+            self.replay_buffer_dict[i]["actions"]=[]
+            self.replay_buffer_dict[i]["rewards"]=[]
+
+        for i,rew in enumerate(rewards):
+            if dones[i]:
+                self.total_episodes += 1
+                append()
+                mean_rew=np.mean(self.replay_buffer_dict[i]["rewards"])
+                if mean_rew>0:
+                    self.class1.append(self.replay_buffer_dict[i])
+                else:
+                    self.class0.append(self.replay_buffer_dict[i])
+                init()
+
+                if self.total_episodes%100==0:
+                    self.get_buffer_statistics()
+                    if self.total_episodes%500==0:
+                        self.train_ruddi_from_buffi()
+            else:
+                try:
+                    append()
+                except:
+                    init()
 
 
 
 
-    def extend_replay_buffers(self, reward, im, instr, act, done):
+
+
+    def extend_replay_buffers2(self, reward, im, instr, act, done):
         if self.own_net:
             self.rewards.append(reward[0])
             self.images.append(im)
