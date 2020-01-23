@@ -1,5 +1,5 @@
 import gc
-
+import random
 import torch
 from myScripts.preProcess import PreProcess
 import numpy as np
@@ -149,8 +149,48 @@ class Rudder():
         else:
             print("class 1 is empty")
 
+    def pad_list(self,lis):
+        #get longest
+        diff=self.max_steps-len(lis)
+        if diff>0:
+            last=lis[-1]*0
+            pad=[last]*(diff)
+            pad=torch.stack(pad)
+            ret=torch.cat((lis,pad))
+            # lis.extend(pad)
+            return ret
+        return lis
+
+
+    def batch_learning(self):
+
+        nr_class1_samples=len(self.class1)
+        shorter_class0= random.choices(self.class0,k=nr_class1_samples)
+        shorter_class0.extend(self.class1)
+        train_set=shorter_class0
+        all_ims, all_instrs, all_acts, all_rews=[],[],[],[]
+        for sample in train_set:
+            ims, instrs, acts, rews = sample["images"],sample["instruction"],sample["actions"],sample["rewards"]
+            all_ims.append(self.pad_list(torch.stack(ims)))
+            all_instrs.append(self.pad_list(torch.tensor(instrs,device=self.device)))
+            all_acts.append(self.pad_list(torch.stack(acts)))
+            all_rews.append(self.pad_list(torch.tensor(rews,device=self.device)))
+
+        all_ims=torch.stack(all_ims)
+        pred = self.network.forward(ims, instrs, acts)
+        loss, _ = self.lossfunction(pred, rews)
+        print("loss",loss)
+        loss.backward()
+        self.optimizer.step()
+        self.optimizer.zero_grad()
+
     def online_learning(self):
-        for sample in self.class1:
+
+        nr_class1_samples=len(self.class1)
+        shorter_class0= random.choices(self.class0,k=nr_class1_samples)
+        shorter_class0.extend(self.class1)
+        train_set=shorter_class0
+        for sample in train_set:
             ims, instrs, acts, rews = sample["images"],sample["instruction"],sample["actions"],sample["rewards"]
             ims=torch.stack(ims).unsqueeze(0)
             instrs = torch.tensor(instrs,device=self.device).unsqueeze(0)
@@ -164,6 +204,7 @@ class Rudder():
             self.optimizer.zero_grad()
 
     def train_ruddi_from_buffi(self):
+        self.batch_learning()
         self.online_learning()
 
     def extend_replay_buffers(self,rewards, ims, instrs, acts, dones):
