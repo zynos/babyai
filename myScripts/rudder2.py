@@ -6,7 +6,7 @@ import numpy as np
 from .network import Net
 
 
-class Rudder():
+class Rudder2():
 
     def __init__(self, embed_dim, action_dim, n_lstm, image_dim=128, device="cpu", max_steps=128, own_net=True):
         self.network = Net(128 * 2, 7, 128 * 2, image_dim=image_dim, device=device,own_net=own_net).to(device=device)
@@ -207,7 +207,7 @@ class Rudder():
         self.batch_learning()
         self.online_learning()
 
-    def extend_replay_buffers(self,rewards, ims, instrs, acts, dones):
+    def consider_adding_sample(self, rewards, ims, instrs, acts, dones):
         def append():
             self.replay_buffer_dict[i]["images"].append(ims[i])
             self.replay_buffer_dict[i]["instruction"]=instrs[i]

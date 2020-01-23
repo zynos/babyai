@@ -4,8 +4,7 @@ import torch
 from babyai.rl.format import default_preprocess_obss
 from babyai.rl.utils import DictList, ParallelEnv
 from babyai.rl.utils.supervised_losses import ExtraInfoCollector
-from myScripts.rudder import Net
-from myScripts.rudder2 import Rudder
+from myScripts.rudder import Rudder
 
 
 class BaseAlgo(ABC):
@@ -74,7 +73,9 @@ class BaseAlgo(ABC):
         self.num_procs = len(envs)
         self.num_frames = self.num_frames_per_proc * self.num_procs
         self.rudder_own_net = rudder_own_net
-        self.rudder=Rudder(acmodel.instr_dim,7,acmodel.memory_dim,acmodel.image_dim,self.device,env_max_steps,own_net=self.rudder_own_net)
+        # self.rudder=Rudder(acmodel.instr_dim,7,acmodel.memory_dim,acmodel.image_dim,self.device,env_max_steps,own_net=self.rudder_own_net)
+        self.rudder=Rudder( self.num_procs,["reward","image","instr","action","done"],self.device,rudder_own_net)
+
         # if self.rudder_own_net:
         #     self.rudder = Net(128 * 2, 7, 128 * 2, device=self.device, own_net=self.rudder_own_net).to(self.device)
         # else:
@@ -168,7 +169,14 @@ class BaseAlgo(ABC):
             # acts = torch.stack(actions).transpose(0, 1).detach().clone()
             # rews = torch.stack(rewards2).transpose(0, 1)
             # images = torch.stack(images).transpose(0, 1).detach().clone()
-            self.rudder.extend_replay_buffers(reward,image,instr,action,done)
+            dic=dict()
+            dic["reward"]=reward
+            dic["image"]=image
+            dic["instr"] = instr
+            dic["action"] = action
+            dic["done"]=done
+            self.rudder.add_data(dic)
+
             self.rudder_loss=0
 
         def do_my_stuff3(images, instrs):
@@ -219,7 +227,7 @@ class BaseAlgo(ABC):
             rewards.append(reward)
             dones.append(done)
 
-            do_my_stuff2(action,preprocessed_obs.image,preprocessed_obs.instr,reward,done)
+
 
 
             if self.aux_info:
@@ -247,6 +255,13 @@ class BaseAlgo(ABC):
             else:
                 self.rewards[i] = torch.tensor(reward, device=self.device)
             self.log_probs[i] = dist.log_prob(action)
+
+
+            ###### MYSTUFF ########
+            do_my_stuff2(action, preprocessed_obs.image, preprocessed_obs.instr, self.rewards[i], done)
+            ###### MYSTUFF ########
+
+
 
             if self.aux_info:
                 self.aux_info_collector.fill_dictionaries(i, env_info, extra_predictions)
