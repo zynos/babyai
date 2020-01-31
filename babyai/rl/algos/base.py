@@ -74,7 +74,7 @@ class BaseAlgo(ABC):
         self.num_frames = self.num_frames_per_proc * self.num_procs
         self.rudder_own_net = rudder_own_net
         # self.rudder=Rudder(acmodel.instr_dim,7,acmodel.memory_dim,acmodel.image_dim,self.device,env_max_steps,own_net=self.rudder_own_net)
-        self.rudder=Rudder( self.num_procs,["reward","image","instr","action","done"],self.device,rudder_own_net)
+        self.rudder=Rudder( self.num_procs,["reward","image","instr","action","done","embed"],self.device,rudder_own_net)
 
         # if self.rudder_own_net:
         #     self.rudder = Net(128 * 2, 7, 128 * 2, device=self.device, own_net=self.rudder_own_net).to(self.device)
@@ -164,7 +164,7 @@ class BaseAlgo(ABC):
             print("runL {:.4f} L {:.4f} rewX {:.4f} l {:.4f}  lAux {:.4f}".format(self.running_loss.item(), loss.item(),
                                                                                   rew_mean.item(), l, aux))
 
-        def do_my_stuff2(action,image,instr,reward,done):
+        def do_my_stuff2(action,image,instr,reward,done,embed):
             # rewards2 = [torch.tensor(r, device=self.device).float() for r in rewards]
             # acts = torch.stack(actions).transpose(0, 1).detach().clone()
             # rews = torch.stack(rewards2).transpose(0, 1)
@@ -175,9 +175,18 @@ class BaseAlgo(ABC):
             dic["instr"] = instr
             dic["action"] = action
             dic["done"]=done
+            dic["embed"]=embed
             self.rudder.add_data(dic)
+            if self.rudder.buffer_full():
+                # print(reward)
+                self.rudder_loss=self.rudder.train_old_sample().item()
+                rew=self.rudder.predict_reward(dic)
+                assert 0==0
+                # print(reward)
 
-            self.rudder_loss=0
+            else:
+
+                self.rudder_loss=0.0
 
         def do_my_stuff3(images, instrs):
             rewards2 = [torch.tensor(r, device=self.device).float() for r in rewards]
@@ -216,8 +225,9 @@ class BaseAlgo(ABC):
                 value = model_results['value']
                 memory = model_results['memory']
                 extra_predictions = model_results['extra_predictions']
-                embed = model_results["embed"]
-                embeddings.append(embed.clone().detach())
+
+            embed = model_results["embed"]
+            embeddings.append(embed.clone().detach())
 
             action = dist.sample()
             actions.append(action.clone().detach())
@@ -258,7 +268,7 @@ class BaseAlgo(ABC):
 
 
             ###### MYSTUFF ########
-            do_my_stuff2(action, preprocessed_obs.image, preprocessed_obs.instr, self.rewards[i], done)
+            # do_my_stuff2(action, preprocessed_obs.image, preprocessed_obs.instr, self.rewards[i], done,embed)
             ###### MYSTUFF ########
 
 

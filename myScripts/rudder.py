@@ -18,22 +18,57 @@ class Rudder():
         self.device=device
         self.rudder_net=Net(128 * 2, 7, 128 * 2, image_dim=128, device=device,own_net=own_net).to(device=device)
         self.optimizer = torch.optim.Adam(self.rudder_net.parameters(), lr=1e-5, weight_decay=1e-5)
-        self.replayBuffer=LessonReplayBuffer(20, buffer_dict_fields)
+        self.replayBuffer=LessonReplayBuffer(200, buffer_dict_fields)
 
-    def preprocess_batch(self,batch):
-        ims, instrs, acts= batch["image"], batch["instr"], batch["action"]
-        ims=torch.stack(ims).unsqueeze(0)
-        instrs=torch.tensor(instrs[0],device=self.device).unsqueeze(0)
-        acts=torch.stack(acts).unsqueeze(0)
+
+
+    def preprocess_batch(self, sample,batch=False):
+        ims, instrs, acts= sample["image"], sample["instr"], sample["action"]
+        if not batch:
+            ims=torch.stack(ims).unsqueeze(0)
+            # instrs=torch.tensor(instrs[0],device=self.device).unsqueeze(0)
+            instrs = torch.stack(instrs).unsqueeze(0)
+            acts=torch.stack(acts).unsqueeze(0)
+        else:
+            ims=ims.unsqueeze(0)
+            instrs=instrs.unsqueeze(0)
+            acts = acts.unsqueeze(0)
         return ims,instrs,acts
 
-    def train_rudder(self,batch):
-        ims, instrs, acts=self.preprocess_batch(batch)
-        rews=batch["reward"]
+    def feed_rudder(self,sample,batch=False):
+        ims, instrs, acts = self.preprocess_batch(sample,batch)
+        pred = self.rudder_net.forward(ims, instrs, acts,batch)
+        return pred
+
+    def inference_rudder(self,sample):
+        rews = sample["reward"]
         rews = torch.tensor(rews, device=self.device).unsqueeze(0)
-        pred = self.rudder_net.forward(ims, instrs, acts)
+        pred = self.feed_rudder(sample)
         loss, _ = self.lossfunction(pred, rews)
-        print("loss", loss.item())
+        return pred,loss
+
+    def train_rudder(self,sample):
+        self.optimizer.zero_grad()
+        rews = sample["reward"]
+        rews = torch.tensor(rews, device=self.device).unsqueeze(0)
+        pred=self.feed_rudder(sample)
+        loss, _ = self.lossfunction(pred, rews)
+        loss.backward()
+        self.optimizer.step()
+        # print("loss", loss.item())
+        return loss,pred
+    def buffer_full(self):
+        return self.replayBuffer.buffersize>=self.replayBuffer.max_buffersize
+
+    def predict_reward(self,sample):
+        with torch.no_grad():
+            pred=self.feed_rudder(sample,True)
+            return pred
+
+    def train_old_sample(self):
+        sample=self.replayBuffer.get_sample()
+        loss,pred=self.train_rudder(sample)
+        self.replayBuffer.update_sample_loss(loss,sample["id"])
         return loss
 
     def add_data(self,sample:dict):
@@ -41,12 +76,13 @@ class Rudder():
             self.preReplayBuffer.add_timestep_data(sample,process_id)
             data_for_rudder=self.preReplayBuffer.send_to_rudder
             if len(data_for_rudder)>0:
-                data_for_replay_buffer=dict()
                 for i,batch in enumerate(data_for_rudder):
                     with torch.no_grad():
-                        loss=self.train_rudder(batch)
+                        pred,loss=self.inference_rudder(batch)
                         batch["loss"]=loss.item()
                         self.replayBuffer.consider_adding_sample(batch)
+
+                self.preReplayBuffer.send_to_rudder=[]
 
     def lossfunction(self, predictions, rewards):
         # from https://github.com/widmi/rudder-a-practical-tutorial/blob/master/tutorial.ipynb

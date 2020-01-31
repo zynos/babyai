@@ -47,7 +47,7 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
     def __init__(self, obs_space, action_space,
                  image_dim=128, memory_dim=128, instr_dim=128,
                  use_instr=False, lang_model="gru", use_memory=False, arch="cnn1",
-                 aux_info=None,use_bert=True):
+                 aux_info=None,use_bert=False):
         super().__init__()
 
         # Decide which components are enabled
@@ -209,16 +209,25 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
         return self.memory_dim
 
     def forward(self, obs, memory, instr_embedding=None,ret_embed=False):
+
         if self.use_instr and instr_embedding is None:
             if self.use_bert:
                 instr_embedding = obs.instr
 
             else:
                 instr_embedding = self._get_instr_embedding(obs.instr)
+
+            # if instr_embedding.shape[1] == 8:
+                # print("lol")
         if self.use_instr and self.lang_model == "attgru":
             # outputs: B x L x D
             # memory: B x M
             mask = (obs.instr != 0).float()
+            # my dirty fix stolen from:      self._get_instr_embedding(obs.instr)
+            # if instr_embedding.shape[1] < mask.shape[1]:
+            #     mask = mask[:, :(instr_embedding.shape[1]-mask.shape[1])]
+            #end of my fix
+            myfo=instr_embedding
             instr_embedding = instr_embedding[:, :mask.shape[1]]
             keys = self.memory2key(memory)
             pre_softmax = (keys[:, None, :] * instr_embedding).sum(2) + 1000 * mask

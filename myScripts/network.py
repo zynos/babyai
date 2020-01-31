@@ -61,7 +61,7 @@ class Net(torch.nn.Module):
         self.fc_out_trans = torch.nn.Linear(embed_dim + action_dim, 1)
         self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-5, weight_decay=1e-5)
 
-    def forward_own_net(self, image, instr, actions):
+    def forward_own_net2(self, image, instr, actions):
         all_ims = []
         all_instrs = []
 
@@ -77,6 +77,37 @@ class Net(torch.nn.Module):
         # x = x.reshape(x.shape[0], -1)
         input = torch.cat([all_ims, all_instrs, one_hot], dim=-1)
         lstm_out, *_ = self.lstm1(input,
+                                  return_all_seq_pos=True  # return predictions for all sequence positions
+                                  )
+        # lstm_out, *_ = self.lstm2(lstm_out,
+        #                           return_all_seq_pos=True  # return predictions for all sequence positions
+        #                           )
+        # lstm_out,_=self.myLstm1(input)
+        # lstm_out,_ = self.myLstm2(lstm_out)
+
+        net_out = self.fc_out(lstm_out)
+        return net_out
+
+    def forward_own_net(self, image, instr, actions,batch):
+        all_ims = []
+        all_instrs = []
+
+        for idx, i in enumerate(image):
+            it = torch.transpose(torch.transpose(i, 1, 3), 2, 3)
+            x = self.image_conv(it)
+            all_ims.append(x.squeeze())
+
+        all_ims = torch.stack(all_ims)
+        for el in instr:
+            all_instrs.append(self.preProcess.get_gru_embedding(el))
+        all_instrs=torch.stack(all_instrs)
+
+        one_hot = torch.nn.functional.one_hot(actions, 7).float()
+        # x = x.reshape(x.shape[0], -1)
+        input = torch.cat([all_ims, all_instrs, one_hot], dim=-1)
+        if batch:
+            input=input.transpose(0, 1)
+        lstm_out, bla = self.lstm1(input,
                                   return_all_seq_pos=True  # return predictions for all sequence positions
                                   )
         # lstm_out, *_ = self.lstm2(lstm_out,

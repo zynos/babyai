@@ -192,6 +192,8 @@ while status['num_frames'] < args.frames:
     update_end_time = time.time()
 
     status['num_frames'] += logs["num_frames"]
+    if 'num_episodes' not in status.keys():
+        status['num_episodes']=0
     status['num_episodes'] += logs['episodes_done']
     status['i'] += 1
 

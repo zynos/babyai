@@ -12,8 +12,14 @@ class LessonReplayBuffer():
             rnd_gen = np.random.RandomState()
         self.rnd_gen = rnd_gen
 
+    def get_mean_return(self):
+        returns=[np.sum(v["reward"]) for k,v in self.replay_buffer]
+        return np.sum(returns)/len(returns)
+
+
     def add_sample(self, sample):
         """Add sample to buffer, assign id"""
+        print("add sample",self.buffersize)
         self.replay_buffer[self.buffersize]=sample
         self.buffersize+=1
 
@@ -40,14 +46,12 @@ class LessonReplayBuffer():
             low_sample_ind = np.argmin([b[1] for b in keys_losses])
             if sample['loss'] > keys_losses[low_sample_ind][1]:
                 id =keys_losses[low_sample_ind][0]
+                print("replace {} with {}".format(self.replay_buffer[id]["loss"],sample["loss"]))
                 self.replace_entry(id,sample)
-                rs=self.get_sample()
-                print(rs["id"])
 
-    def softmax(self, logits):
-        """Softmax used for sampling from buffer"""
-        e_logits = np.exp((logits - np.max(logits)) / self.temperature)
-        return e_logits / e_logits.sum()
+    def softmax(self, x):
+        e_logits = np.exp((x-np.max(x))/self.temperature)
+        return  e_logits/ e_logits.sum()
 
     def get_sample(self):
         """Randomly sample episode or game with from buffer; Sampling probabilities are softmax values of losses in
@@ -55,9 +59,13 @@ class LessonReplayBuffer():
         keys_losses = self.get_losses()
         losses = [b[1] for b in keys_losses]
         ids = [b[0] for b in keys_losses]
-
+        losses=np.array(losses,dtype=float)
         probs = self.softmax(losses)
         sample_id = self.rnd_gen.choice(ids, p=probs)
         sample = self.replay_buffer[sample_id]
         sample['id'] = sample_id
         return sample
+
+    def update_sample_loss(self, loss, id):
+        """Update loss of sample id"""
+        self.replay_buffer[id]['loss'] = loss
