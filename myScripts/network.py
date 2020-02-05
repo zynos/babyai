@@ -19,7 +19,8 @@ class Net(torch.nn.Module):
             # input gate: disable connections to forward inputs, initialize weights to recurrent inputs with xavier
             w_ig=(False, torch.nn.init.xavier_normal_),
             # output gate: disable all connection (=no forget gate) and disable bias
-            w_og=False, b_og=False,
+            w_og=(torch.nn.init.xavier_normal_, False),
+            # w_og=False, b_og=False,
             # forget gate: disable all connection (=no forget gate) and disable bias
             w_fg=False, b_fg=False,
             # LSTM output activation is set to identity function

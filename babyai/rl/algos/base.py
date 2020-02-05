@@ -75,7 +75,7 @@ class BaseAlgo(ABC):
         self.rudder_own_net = rudder_own_net
         # self.rudder=Rudder(acmodel.instr_dim,7,acmodel.memory_dim,acmodel.image_dim,self.device,env_max_steps,own_net=self.rudder_own_net)
         self.rudder=Rudder( self.num_procs,["reward","image","instr","action","done","embed"],self.device,rudder_own_net)
-
+        self.old_rew = None
         # if self.rudder_own_net:
         #     self.rudder = Net(128 * 2, 7, 128 * 2, device=self.device, own_net=self.rudder_own_net).to(self.device)
         # else:
@@ -144,27 +144,28 @@ class BaseAlgo(ABC):
         images = []
         instructs = []
         dones = []
+        old_rew=None
 
 
-        def my_evaluate_pred(pred, rews,rew_mean):
-            loss, (l, aux) = self.rudder.lossfunction(pred, rews)
-            self.rudder_loss = loss.item()
-            loss.backward()
-            self.rudder.optimizer.step()
-            with torch.no_grad():
-                self.rudder_rewards = pred.squeeze().clone().detach()
-                # if len(self.rudder.replay_buffer)>39:
-                #     if self.reshape_reward is not None:
-                #         self.rewards = self.rudder_rewards.transpose(0, 1) * 20.0
-                #     else:
-                #         self.rewards = self.rudder_rewards.transpose(0, 1)
+        # def my_evaluate_pred(pred, rews,rew_mean):
+        #     loss, (l, aux) = self.rudder.lossfunction(pred, rews)
+        #     self.rudder_loss = loss.item()
+        #     loss.backward()
+        #     self.rudder.optimizer.step()
+        #     with torch.no_grad():
+        #         self.rudder_rewards = pred.squeeze().clone().detach()
+        #         # if len(self.rudder.replay_buffer)>39:
+        #         #     if self.reshape_reward is not None:
+        #         #         self.rewards = self.rudder_rewards.transpose(0, 1) * 20.0
+        #         #     else:
+        #         #         self.rewards = self.rudder_rewards.transpose(0, 1)
+        #
+        #     self.running_loss = self.running_loss * 0.99 + loss * 0.01
+        #
+        #     print("runL {:.4f} L {:.4f} rewX {:.4f} l {:.4f}  lAux {:.4f}".format(self.running_loss.item(), loss.item(),
+        #                                                                           rew_mean.item(), l, aux))
 
-            self.running_loss = self.running_loss * 0.99 + loss * 0.01
-
-            print("runL {:.4f} L {:.4f} rewX {:.4f} l {:.4f}  lAux {:.4f}".format(self.running_loss.item(), loss.item(),
-                                                                                  rew_mean.item(), l, aux))
-
-        def do_my_stuff2(action,image,instr,reward,done,embed):
+        def do_my_stuff2(action,image,instr,reward,done,embed,i):
             # rewards2 = [torch.tensor(r, device=self.device).float() for r in rewards]
             # acts = torch.stack(actions).transpose(0, 1).detach().clone()
             # rews = torch.stack(rewards2).transpose(0, 1)
@@ -179,8 +180,15 @@ class BaseAlgo(ABC):
             self.rudder.add_data(dic)
             if self.rudder.buffer_full():
                 # print(reward)
-                self.rudder_loss=self.rudder.train_old_sample().item()
+                self.rudder_loss=self.rudder.train_old_samples().item()
                 rew=self.rudder.predict_reward(dic)
+                if type(self.old_rew) != type(None):
+                    redistributed_reward = rew-self.old_rew
+                    self.rewards[i]=redistributed_reward.reshape(len(self.rewards[i]),)
+                else:
+                    redistributed_reward=reward
+                self.old_rew=rew
+
                 assert 0==0
                 # print(reward)
 
@@ -268,7 +276,7 @@ class BaseAlgo(ABC):
 
 
             ###### MYSTUFF ########
-            # do_my_stuff2(action, preprocessed_obs.image, preprocessed_obs.instr, self.rewards[i], done,embed)
+            do_my_stuff2(action, preprocessed_obs.image, preprocessed_obs.instr, self.rewards[i], done,embed,i)
             ###### MYSTUFF ########
 
 

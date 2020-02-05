@@ -3,7 +3,7 @@ from myScripts.network import Net
 from myScripts.replayBuffer import LessonReplayBuffer
 
 from .preReplayBuffer import preReplayBuffer
-
+from collections import Counter
 
 
 
@@ -13,12 +13,15 @@ class Rudder():
     #       rudder lstm
     #       replay buffer
     def __init__(self,nr_procs:int,buffer_dict_fields:list,device,own_net):
+        self.rudder_train_epochs = 8
         self.preReplayBuffer=preReplayBuffer(nr_procs,buffer_dict_fields)
         self.nr_procs=nr_procs
         self.device=device
         self.rudder_net=Net(128 * 2, 7, 128 * 2, image_dim=128, device=device,own_net=own_net).to(device=device)
         self.optimizer = torch.optim.Adam(self.rudder_net.parameters(), lr=1e-5, weight_decay=1e-5)
-        self.replayBuffer=LessonReplayBuffer(200, buffer_dict_fields)
+        self.replayBuffer=LessonReplayBuffer(512, buffer_dict_fields)
+        self.reward_scale = 20
+        self.quality_threshold = 0.8
 
 
 
@@ -52,11 +55,11 @@ class Rudder():
         rews = sample["reward"]
         rews = torch.tensor(rews, device=self.device).unsqueeze(0)
         pred=self.feed_rudder(sample)
-        loss, _ = self.lossfunction(pred, rews)
+        loss, tup = self.lossfunction(pred, rews)
         loss.backward()
         self.optimizer.step()
         # print("loss", loss.item())
-        return loss,pred
+        return loss,pred,tup[0]
     def buffer_full(self):
         return self.replayBuffer.buffersize>=self.replayBuffer.max_buffersize
 
@@ -65,10 +68,24 @@ class Rudder():
             pred=self.feed_rudder(sample,True)
             return pred
 
-    def train_old_sample(self):
-        sample=self.replayBuffer.get_sample()
-        loss,pred=self.train_rudder(sample)
-        self.replayBuffer.update_sample_loss(loss,sample["id"])
+    def train_old_samples(self):
+        end=False
+        ids=[]
+        while not end:
+            qualitys=[]
+            for i in range(self.rudder_train_epochs):
+                sample=self.replayBuffer.get_sample()
+                loss,pred,quality=self.train_rudder(sample)
+                self.replayBuffer.update_sample_loss(loss,sample["id"])
+                ids.append(sample["id"])
+                print("loss {}, quality {}, sample {} ".format(loss.item(),quality,sample["id"]))
+                qualitys.append(quality>=0)
+            if False in qualitys:
+                end=False
+            else:
+                end=True
+        idc=Counter(ids)
+        self.rudder_net.lstm1.plot_internals(filename=None, show_plot=True, mb_index=0, fdict=dict(figsize=(8, 8), dpi=100))
         return loss
 
     def add_data(self,sample:dict):
@@ -89,12 +106,16 @@ class Rudder():
         returns = rewards.sum(dim=1)
         predictions = predictions.squeeze(2)
         # Main task: predicting return at last timestep
-        main_loss = torch.mean(predictions[:, -1] - returns) ** 2
+        diff=predictions[:, -1] - returns
+        main_loss = torch.mean(diff) ** 2
         # Auxiliary task: predicting final return at every timestep ([..., None] is for correct broadcasting)
         aux_loss = torch.mean(predictions[:, :] - returns[..., None]) ** 2
         # Combine losses
         loss = main_loss + aux_loss * 0.5
-        return loss, (main_loss, aux_loss)
+        with torch.no_grad():
+            quality=1-(torch.abs(diff)/self.reward_scale) *(1/(1-self.quality_threshold))
+            # print("quality",quality)
+        return loss, (quality,main_loss, aux_loss)
 
 
 
