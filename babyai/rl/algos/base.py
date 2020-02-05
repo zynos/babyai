@@ -147,29 +147,10 @@ class BaseAlgo(ABC):
         old_rew=None
 
 
-        # def my_evaluate_pred(pred, rews,rew_mean):
-        #     loss, (l, aux) = self.rudder.lossfunction(pred, rews)
-        #     self.rudder_loss = loss.item()
-        #     loss.backward()
-        #     self.rudder.optimizer.step()
-        #     with torch.no_grad():
-        #         self.rudder_rewards = pred.squeeze().clone().detach()
-        #         # if len(self.rudder.replay_buffer)>39:
-        #         #     if self.reshape_reward is not None:
-        #         #         self.rewards = self.rudder_rewards.transpose(0, 1) * 20.0
-        #         #     else:
-        #         #         self.rewards = self.rudder_rewards.transpose(0, 1)
-        #
-        #     self.running_loss = self.running_loss * 0.99 + loss * 0.01
-        #
-        #     print("runL {:.4f} L {:.4f} rewX {:.4f} l {:.4f}  lAux {:.4f}".format(self.running_loss.item(), loss.item(),
-        #                                                                           rew_mean.item(), l, aux))
 
         def do_my_stuff2(action,image,instr,reward,done,embed,i):
-            # rewards2 = [torch.tensor(r, device=self.device).float() for r in rewards]
-            # acts = torch.stack(actions).transpose(0, 1).detach().clone()
-            # rews = torch.stack(rewards2).transpose(0, 1)
-            # images = torch.stack(images).transpose(0, 1).detach().clone()
+            # iterate over every process
+
             dic=dict()
             dic["reward"]=reward
             dic["image"]=image
@@ -177,7 +158,7 @@ class BaseAlgo(ABC):
             dic["action"] = action
             dic["done"]=done
             dic["embed"]=embed
-            self.rudder.add_data(dic)
+            proc_data=self.rudder.add_data(dic)
             if self.rudder.buffer_full():
                 # print(reward)
                 self.rudder_loss=self.rudder.train_old_samples().item()
@@ -196,32 +177,7 @@ class BaseAlgo(ABC):
 
                 self.rudder_loss=0.0
 
-        def do_my_stuff3(images, instrs):
-            rewards2 = [torch.tensor(r, device=self.device).float() for r in rewards]
-            rews = torch.stack(rewards2).transpose(0, 1)
-            rew_mean = rews.mean()
 
-            if rew_mean >= 0.0:
-                self.rudder.optimizer.zero_grad()
-                acts = torch.stack(actions).transpose(0, 1).detach().clone()
-                images = torch.stack(images).transpose(0, 1).detach().clone()
-                instrs = instrs.detach().clone()
-                self.rudder.replay_rewards.append(rews)
-                pred = self.rudder.forward(images, instrs, acts)
-                my_evaluate_pred(pred,rews,rew_mean)
-
-        def do_my_stuff():
-            rewards2 = [torch.tensor(r, device=self.device).float() for r in rewards]
-            rews = torch.stack(rewards2).transpose(0, 1)
-            rew_mean = rews.mean()
-            logger_rew_mean=sum(self.log_return) / len(self.log_return)
-            if logger_rew_mean >= 0.0:
-                embs = torch.stack(embeddings).transpose(0, 1)
-                acts = torch.stack(actions).transpose(0, 1)
-                self.rudder.optimizer.zero_grad()
-                self.rudder.replay_rewards.append(rews)
-                pred = self.rudder(embs, acts)
-                my_evaluate_pred(pred,rews,rew_mean)
 
         for i in range(self.num_frames_per_proc):
             # Do one agent-environment interaction
@@ -276,7 +232,7 @@ class BaseAlgo(ABC):
 
 
             ###### MYSTUFF ########
-            do_my_stuff2(action, preprocessed_obs.image, preprocessed_obs.instr, self.rewards[i], done,embed,i)
+            do_my_stuff2(action, preprocessed_obs.image,preprocessed_obs.instr, reward, done,embeddings[-1],i)
             ###### MYSTUFF ########
 
 

@@ -21,8 +21,11 @@ class preReplayBuffer():
         # sample keys: rewards, ims, instrs, acts, dones etc.
         for key, value in sample.items():
             self.replay_buffer_dict[process_id][key].append(value[process_id])
+        tmp =self.replay_buffer_dict[process_id]
         if sample["done"][process_id]==True:
             self.send_to_rudder.append(self.replay_buffer_dict[process_id])
+
             self.init_dict(process_id)
+        return tmp
 
 

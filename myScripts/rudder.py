@@ -89,8 +89,10 @@ class Rudder():
         return loss
 
     def add_data(self,sample:dict):
+        processes_data=dict()
         for process_id in range(self.nr_procs):
-            self.preReplayBuffer.add_timestep_data(sample,process_id)
+            timesteps=self.preReplayBuffer.add_timestep_data(sample,process_id)
+            processes_data[process_id]=timesteps
             data_for_rudder=self.preReplayBuffer.send_to_rudder
             if len(data_for_rudder)>0:
                 for i,batch in enumerate(data_for_rudder):
@@ -100,6 +102,7 @@ class Rudder():
                         self.replayBuffer.consider_adding_sample(batch)
 
                 self.preReplayBuffer.send_to_rudder=[]
+        return processes_data
 
     def lossfunction(self, predictions, rewards):
         # from https://github.com/widmi/rudder-a-practical-tutorial/blob/master/tutorial.ipynb
