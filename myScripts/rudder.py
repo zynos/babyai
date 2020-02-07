@@ -1,7 +1,7 @@
 import torch
 from myScripts.network import Net
 from myScripts.replayBuffer import LessonReplayBuffer
-
+import numpy as np
 from .preReplayBuffer import preReplayBuffer
 from collections import Counter
 
@@ -18,7 +18,7 @@ class Rudder():
         self.nr_procs=nr_procs
         self.device=device
         self.rudder_net=Net(instr_dim, embed_mem_dim,7, 128 * 2, image_dim, device=device,own_net=own_net).to(device=device)
-        self.optimizer = torch.optim.Adam(self.rudder_net.parameters(), lr=1e-6, weight_decay=1e-2)
+        self.optimizer = torch.optim.Adam(self.rudder_net.parameters(), lr=1e-4, weight_decay=1e-4)
         self.replayBuffer=LessonReplayBuffer(512, buffer_dict_fields)
         self.reward_scale = 20
         self.quality_threshold = 0.8
@@ -73,7 +73,7 @@ class Rudder():
                     rews.append(pred.squeeze()[-1])
                 except:
                     rews.append(pred.squeeze(1)[-1].squeeze())
-            assert torch.sum(sequence["reward"])<20
+            assert np.sum(sequence["reward"])<20
 
         return torch.stack(rews)
 
