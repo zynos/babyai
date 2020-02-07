@@ -1,4 +1,6 @@
 from abc import ABC, abstractmethod
+
+import numpy as np
 import torch
 
 from babyai.rl.format import default_preprocess_obss
@@ -74,8 +76,11 @@ class BaseAlgo(ABC):
         self.num_frames = self.num_frames_per_proc * self.num_procs
         self.rudder_own_net = rudder_own_net
         # self.rudder=Rudder(acmodel.instr_dim,7,acmodel.memory_dim,acmodel.image_dim,self.device,env_max_steps,own_net=self.rudder_own_net)
-        self.rudder=Rudder( self.num_procs,["reward","image","instr","action","done","embed"],self.device,rudder_own_net)
+        rudder_dict_keys=["reward","image","instr","action","done","embed","timestep"]
+        self.rudder=Rudder( self.num_procs,rudder_dict_keys,self.device,rudder_own_net,acmodel.memory_dim,
+                            acmodel.image_dim,acmodel.instr_dim)
         self.old_rew = None
+        self.rewards_chache=[]
         # if self.rudder_own_net:
         #     self.rudder = Net(128 * 2, 7, 128 * 2, device=self.device, own_net=self.rudder_own_net).to(self.device)
         # else:
@@ -138,6 +143,7 @@ class BaseAlgo(ABC):
             reward, policy loss, value loss, etc.
 
         """
+
         embeddings = []
         actions = []
         rewards = []
@@ -158,17 +164,23 @@ class BaseAlgo(ABC):
             dic["action"] = action
             dic["done"]=done
             dic["embed"]=embed
+            dic["timestep"]=i
+            print("call add data",i)
+
             proc_data=self.rudder.add_data(dic)
+
+            if torch.sum(torch.stack(proc_data[0]["reward"]))>20:
+                print("bad")
             if self.rudder.buffer_full():
                 # print(reward)
                 self.rudder_loss=self.rudder.train_old_samples().item()
-                rew=self.rudder.predict_reward(dic)
-                if type(self.old_rew) != type(None):
-                    redistributed_reward = rew-self.old_rew
-                    self.rewards[i]=redistributed_reward.reshape(len(self.rewards[i]),)
-                else:
-                    redistributed_reward=reward
-                self.old_rew=rew
+                rew=self.rudder.predict_reward(proc_data)
+                # if type(self.old_rew) != type(None):
+                #     redistributed_reward = rew-self.old_rew
+                #     self.rewards[i]=redistributed_reward.reshape(len(self.rewards[i]),)
+                # else:
+                #     redistributed_reward=reward
+                # self.old_rew=rew
 
                 assert 0==0
                 # print(reward)
@@ -198,10 +210,15 @@ class BaseAlgo(ABC):
             images.append(preprocessed_obs.image)
             instructs.append(preprocessed_obs.instr)
             obs, reward, done, env_info = self.env.step(action.cpu().numpy())
+            if np.sum(reward)>0:
+                mask=np.array(reward)>0
+                r=np.array(reward)[mask]
+                d=np.array(done)[mask]
+                if False in d:
+                    assert "Fuck" == "this"
+
             rewards.append(reward)
             dones.append(done)
-
-
 
 
             if self.aux_info:
@@ -232,7 +249,13 @@ class BaseAlgo(ABC):
 
 
             ###### MYSTUFF ########
-            do_my_stuff2(action, preprocessed_obs.image,preprocessed_obs.instr, reward, done,embeddings[-1],i)
+            myrews=self.rewards[i].detach().clone()
+            myIms=preprocessed_obs.image.detach().clone()
+            myINstrs=preprocessed_obs.instr.detach().clone()
+            myActs=action.detach().clone()
+            do_my_stuff2(myActs, myIms,myINstrs, myrews, done,embeddings[-1],i)
+            # if i==0:
+            #     self.rewards_chache.append(self.rewards[i])
             ###### MYSTUFF ########
 
 

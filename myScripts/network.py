@@ -5,7 +5,7 @@ from widis_lstm_tools.nn import LSTMLayer
 
 
 class Net(torch.nn.Module):
-    def __init__(self, embed_dim, action_dim, n_lstm, image_dim=128,device="gpu",own_net=True):
+    def __init__(self, instr_embed_dim,ppo_embed_dim, action_dim, n_lstm, image_dim=128,device="gpu",own_net=True):
         super(Net, self).__init__()
         self.device = device
         self.own_net =own_net
@@ -13,7 +13,7 @@ class Net(torch.nn.Module):
 
         # This will create an LSTM layer where we will feed the concatenate
         self.lstm1 = LSTMLayer(
-            in_features=embed_dim + action_dim, out_features=n_lstm, inputformat='NLC',
+            in_features=instr_embed_dim + action_dim+image_dim+ppo_embed_dim, out_features=n_lstm, inputformat='NLC',
             # cell input: initialize weights to forward inputs with xavier, disable connections to recurrent inputs
             w_ci=(torch.nn.init.xavier_normal_, False),
             # input gate: disable connections to forward inputs, initialize weights to recurrent inputs with xavier
@@ -54,12 +54,12 @@ class Net(torch.nn.Module):
 
 
         # After the LSTM layer, we add a fully connected output layer
-        self.myLstm1=torch.nn.LSTM(embed_dim + action_dim,n_lstm*2)
+        self.myLstm1=torch.nn.LSTM(instr_embed_dim + action_dim,n_lstm*2)
         self.myLstm2=torch.nn.LSTM(n_lstm*2,n_lstm)
-        self.myGRU=torch.nn.GRU(embed_dim + action_dim,n_lstm*2)
+        self.myGRU=torch.nn.GRU(instr_embed_dim + action_dim,n_lstm*2)
         self.myGRU2 = torch.nn.GRU(n_lstm * 2, n_lstm)
         self.fc_out = torch.nn.Linear(n_lstm, 1)
-        self.fc_out_trans = torch.nn.Linear(embed_dim + action_dim, 1)
+        self.fc_out_trans = torch.nn.Linear(instr_embed_dim + action_dim, 1)
         self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-5, weight_decay=1e-5)
 
     def forward_own_net2(self, image, instr, actions):
@@ -88,24 +88,30 @@ class Net(torch.nn.Module):
 
         net_out = self.fc_out(lstm_out)
         return net_out
-
-    def forward_own_net(self, image, instr, actions,batch):
+    def pre_process_images(self,image):
+        # if len(image)<2:
+        #     image=[image]
         all_ims = []
-        all_instrs = []
-
         for idx, i in enumerate(image):
             it = torch.transpose(torch.transpose(i, 1, 3), 2, 3)
             x = self.image_conv(it)
-            all_ims.append(x.squeeze())
+            all_ims.append(x.squeeze(2).squeeze(2))
 
         all_ims = torch.stack(all_ims)
+        return all_ims
+
+    def pre_process_instructions(self,instr):
+        all_instrs = []
         for el in instr:
             all_instrs.append(self.preProcess.get_gru_embedding(el))
         all_instrs=torch.stack(all_instrs)
-
+        return all_instrs
+    def forward_own_net(self, image, instr, actions,embeds,batch):
+        all_ims=self.pre_process_images(image)
+        all_instrs=self.pre_process_instructions(instr)
         one_hot = torch.nn.functional.one_hot(actions, 7).float()
         # x = x.reshape(x.shape[0], -1)
-        input = torch.cat([all_ims, all_instrs, one_hot], dim=-1)
+        input = torch.cat([all_ims, all_instrs, one_hot,embeds], dim=-1)
         if batch:
             input=input.transpose(0, 1)
         lstm_out, bla = self.lstm1(input,

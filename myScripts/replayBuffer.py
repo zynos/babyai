@@ -19,6 +19,7 @@ class LessonReplayBuffer():
 
     def add_sample(self, sample):
         """Add sample to buffer, assign id"""
+        assert np.sum(sample["reward"])<20
         print("add sample",self.buffersize)
         self.replay_buffer[self.buffersize]=sample
         self.buffersize+=1
@@ -29,6 +30,7 @@ class LessonReplayBuffer():
         return keys_losses
 
     def replace_entry(self,id,sample):
+        assert np.sum(sample["reward"]) < 20
         self.replay_buffer[id]=sample
 
     # def consider_adding_sample(self, sample: dict):
@@ -55,6 +57,7 @@ class LessonReplayBuffer():
         Sample must at least contain the key 'loss'; For usage with RUDDER example code, see LessonReplayBuffer class
         docstring;
         """
+        assert np.sum(sample["reward"]) < 20
         if self.buffersize < self.max_buffersize:
             # Add sample if buffer is not full
             self.add_sample(sample)
@@ -81,13 +84,13 @@ class LessonReplayBuffer():
         losses=[]
         ids=[]
         for id,sample in self.replay_buffer.items():
-            return_distances.append(torch.abs(mean_ret.cpu()-np.sum(sample["reward"])))
+            return_distances.append(np.abs(mean_ret.cpu()-np.sum(sample["reward"])))
             losses.append(sample["loss"])
             ids.append(id)
 
         if in_sample:
             losses.append(in_sample["loss"])
-            return_distances.append(torch.abs(mean_ret.cpu()-np.sum(in_sample["reward"])))
+            return_distances.append(np.abs(mean_ret.cpu()-np.sum(in_sample["reward"])))
             #has no id yet
             ids.append(-1)
 

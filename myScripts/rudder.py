@@ -12,13 +12,13 @@ class Rudder():
     # has   preReplayBuffer
     #       rudder lstm
     #       replay buffer
-    def __init__(self,nr_procs:int,buffer_dict_fields:list,device,own_net):
+    def __init__(self,nr_procs:int,buffer_dict_fields:list,device,own_net,embed_mem_dim,image_dim,instr_dim):
         self.rudder_train_epochs = 8
         self.preReplayBuffer=preReplayBuffer(nr_procs,buffer_dict_fields)
         self.nr_procs=nr_procs
         self.device=device
-        self.rudder_net=Net(128 * 2, 7, 128 * 2, image_dim=128, device=device,own_net=own_net).to(device=device)
-        self.optimizer = torch.optim.Adam(self.rudder_net.parameters(), lr=1e-5, weight_decay=1e-5)
+        self.rudder_net=Net(instr_dim, embed_mem_dim,7, 128 * 2, image_dim, device=device,own_net=own_net).to(device=device)
+        self.optimizer = torch.optim.Adam(self.rudder_net.parameters(), lr=1e-6, weight_decay=1e-2)
         self.replayBuffer=LessonReplayBuffer(512, buffer_dict_fields)
         self.reward_scale = 20
         self.quality_threshold = 0.8
@@ -26,21 +26,22 @@ class Rudder():
 
 
     def preprocess_batch(self, sample,batch=False):
-        ims, instrs, acts= sample["image"], sample["instr"], sample["action"]
+        ims, instrs, acts,embeds= sample["image"], sample["instr"], sample["action"],sample["embed"]
         if not batch:
             ims=torch.stack(ims).unsqueeze(0)
             # instrs=torch.tensor(instrs[0],device=self.device).unsqueeze(0)
             instrs = torch.stack(instrs).unsqueeze(0)
             acts=torch.stack(acts).unsqueeze(0)
+            embs=torch.stack(embeds).unsqueeze(0)
         else:
             ims=ims.unsqueeze(0)
             instrs=instrs.unsqueeze(0)
             acts = acts.unsqueeze(0)
-        return ims,instrs,acts
+        return ims,instrs,acts,embs
 
     def feed_rudder(self,sample,batch=False):
-        ims, instrs, acts = self.preprocess_batch(sample,batch)
-        pred = self.rudder_net.forward(ims, instrs, acts,batch)
+        ims, instrs, acts,embeds = self.preprocess_batch(sample,batch)
+        pred = self.rudder_net.forward(ims, instrs, acts,embeds,batch)
         return pred
 
     def inference_rudder(self,sample):
@@ -63,10 +64,18 @@ class Rudder():
     def buffer_full(self):
         return self.replayBuffer.buffersize>=self.replayBuffer.max_buffersize
 
-    def predict_reward(self,sample):
-        with torch.no_grad():
-            pred=self.feed_rudder(sample,True)
-            return pred
+    def predict_reward(self,proc_buffer_data):
+        rews=[]
+        for proc_id,sequence in proc_buffer_data.items():
+            with torch.no_grad():
+                pred=self.feed_rudder(sequence,False)
+                try:
+                    rews.append(pred.squeeze()[-1])
+                except:
+                    rews.append(pred.squeeze(1)[-1].squeeze())
+            assert torch.sum(sequence["reward"])<20
+
+        return torch.stack(rews)
 
     def train_old_samples(self):
         end=False
@@ -85,12 +94,15 @@ class Rudder():
             else:
                 end=True
         idc=Counter(ids)
-        self.rudder_net.lstm1.plot_internals(filename=None, show_plot=True, mb_index=0, fdict=dict(figsize=(8, 8), dpi=100))
+        # self.rudder_net.lstm1.plot_internals(filename=None, show_plot=True, mb_index=0, fdict=dict(figsize=(8, 8), dpi=100))
         return loss
 
     def add_data(self,sample:dict):
         processes_data=dict()
         for process_id in range(self.nr_procs):
+            tmp = self.preReplayBuffer.replay_buffer_dict[process_id]
+            if tmp["reward"] and tmp["reward"][0] > 0:
+                print("shits go down")
             timesteps=self.preReplayBuffer.add_timestep_data(sample,process_id)
             processes_data[process_id]=timesteps
             data_for_rudder=self.preReplayBuffer.send_to_rudder
