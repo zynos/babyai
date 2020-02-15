@@ -1,7 +1,7 @@
 import numpy
 import torch
 import torch.nn.functional as F
-
+import gc
 
 from babyai.rl.algos.base import BaseAlgo
 
@@ -134,6 +134,8 @@ class PPOAlgo(BaseAlgo):
                 grad_norm = sum(p.grad.data.norm(2) ** 2 for p in self.acmodel.parameters() if p.grad is not None) ** 0.5
                 torch.nn.utils.clip_grad_norm_(self.acmodel.parameters(), self.max_grad_norm)
                 self.optimizer.step()
+                gc.collect()
+                torch.cuda.empty_cache()
 
                 # Update log values
 

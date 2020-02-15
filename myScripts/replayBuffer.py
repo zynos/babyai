@@ -1,19 +1,36 @@
 import numpy as np
 import torch
 from scipy.stats import rankdata
+import copy
 
 class LessonReplayBuffer():
     def __init__(self, max_buffersize, dict_fields: list,rnd_gen=None):
+        self.use_list = True
         self.max_buffersize=max_buffersize
-        self.replay_buffer=dict()
+        self.replaced_indices=set()
+        if self.use_list:
+            self.replay_buffer_list=[]
+        else:
+            self.replay_buffer_dict=dict()
         self.temperature=1.
         self.buffersize=0
+        self.added_new_sample = True
         if rnd_gen is None:
             rnd_gen = np.random.RandomState()
         self.rnd_gen = rnd_gen
 
+    def get_return_set(self):
+        if self.use_list:
+            returns = [np.sum(v["reward"]).item() for v in self.replay_buffer_list]
+        else:
+            returns=[np.sum(v["reward"]).item() for k,v in self.replay_buffer_dict.items()]
+        return set(returns)
+
     def get_mean_return(self):
-        returns=[np.sum(v["reward"]) for k,v in self.replay_buffer.items()]
+        if self.use_list:
+            returns = [np.sum(v["reward"]) for v in self.replay_buffer_list]
+        else:
+            returns=[np.sum(v["reward"]) for k,v in self.replay_buffer_dict.items()]
         return np.sum(returns)/len(returns)
 
 
@@ -21,35 +38,53 @@ class LessonReplayBuffer():
         """Add sample to buffer, assign id"""
         assert np.sum(sample["reward"])<20
         print("add sample",self.buffersize)
-        self.replay_buffer[self.buffersize]=sample
+        if self.use_list:
+            self.replay_buffer_list.append(sample)
+        else:
+            self.replay_buffer_dict[self.buffersize]=sample
         self.buffersize+=1
 
     def get_losses(self):
         """Get all losses in buffer"""
-        keys_losses = [(k, self.replay_buffer[k]["loss"]) for k in self.replay_buffer.keys()]
+        if self.use_list:
+            keys_losses = [(i, self.replay_buffer_dict[i]["loss"]) for i, e in self.replay_buffer_dict.keys()]
+        else:
+            keys_losses = [(k, self.replay_buffer_dict[k]["loss"]) for k in self.replay_buffer_dict.keys()]
         return keys_losses
 
     def replace_entry(self,id,sample):
-        assert np.sum(sample["reward"]) < 20
-        self.replay_buffer[id]=sample
+        # assert np.sum(sample["reward"]) < 20
+        # del self.replay_buffer[id]
+        # print(torch.cuda.memory_summary)
 
-    # def consider_adding_sample(self, sample: dict):
-    #     """ Show sample to buffer; Buffer decides whether to add it or not based on sample loss;
-    #
-    #     Sample must at least contain the key 'loss'; For usage with RUDDER example code, see LessonReplayBuffer class
-    #     docstring;
-    #     """
-    #     if self.buffersize < self.max_buffersize:
-    #         # Add sample if buffer is not full
-    #         self.add_sample(sample)
-    #     else:
-    #         # Replace sample with lowest loss in buffer if new sample loss is higher
-    #         keys_losses = self.get_losses()
-    #         low_sample_ind = np.argmin([b[1] for b in keys_losses])
-    #         if sample['loss'] > keys_losses[low_sample_ind][1]:
-    #             id =keys_losses[low_sample_ind][0]
-    #             print("replace {} with {}".format(self.replay_buffer[id]["loss"],sample["loss"]))
-    #             self.replace_entry(id,sample)
+        if self.use_list:
+            # id=np.random.randint(len(self.replay_buffer2))
+            print("replace",id)
+
+            self.replay_buffer_list[id]=None
+            self.replay_buffer_list[id]=sample
+            del sample
+            torch.cuda.empty_cache()
+            assert self.replay_buffer_list[id] != None
+        else:
+            new_dict=dict()
+            for k,v in self.replay_buffer_dict.items():
+                new_dict[k]=v
+                del v
+                torch.cuda.empty_cache()
+            new_dict[id]=sample
+            del sample
+            torch.cuda.empty_cache()
+            del self.replay_buffer_dict
+            torch.cuda.empty_cache()
+            # s=torch.cuda.memory_summary(device=0)
+            # print(s)
+            self.replay_buffer_dict=new_dict
+            assert self.replay_buffer_dict[id] != None
+
+
+        # self.replay_buffer[id]=sample
+
 
     def consider_adding_sample(self, sample: dict):
         """ Show sample to buffer; Buffer decides whether to add it or not based on sample loss;
@@ -63,7 +98,6 @@ class LessonReplayBuffer():
             self.add_sample(sample)
         else:
             # Replace sample with lowest loss in buffer if new sample loss is higher
-            # keys_losses = self.get_losses()
             keys_ranks = self.get_ranks(sample)
             sample_rank=keys_ranks[-1][1]
 
@@ -71,31 +105,50 @@ class LessonReplayBuffer():
             low_sample_rank=keys_ranks[low_sample_ind][1]
             if sample_rank > low_sample_rank:
                 id =keys_ranks[low_sample_ind][0]
-                print("replace {} with {}".format(self.replay_buffer[id]["loss"],sample["loss"]))
+                print("replace {} with {} id {}".format(low_sample_rank,sample_rank,id))
+                self.replaced_indices.add(id)
                 self.replace_entry(id,sample)
+                self.added_new_sample=True
+                print("never replaced:",set(range(self.max_buffersize))-self.replaced_indices)
+            else:
+                self.added_new_sample = False
 
     def softmax(self, x):
         e_logits = np.exp((x-np.max(x))/self.temperature)
         return  e_logits/ e_logits.sum()
 
     def get_ranks(self,in_sample=None):
+        def append_stuff():
+            try:
+                return_distances.append(np.abs(mean_ret.cpu() - np.sum(sample["reward"])))
+            except:
+                return_distances.append(np.abs(mean_ret - np.sum(sample["reward"])))
+            losses.append(sample["loss"])
+            ids.append(id)
         mean_ret=self.get_mean_return()
         return_distances=[]
         losses=[]
         ids=[]
-        for id,sample in self.replay_buffer.items():
-            return_distances.append(np.abs(mean_ret.cpu()-np.sum(sample["reward"])))
-            losses.append(sample["loss"])
-            ids.append(id)
+        if self.use_list:
+            for id,sample in enumerate(self.replay_buffer_list):
+                append_stuff()
+        else:
+            for id,sample in self.replay_buffer_dict.items():
+                append_stuff()
+
 
         if in_sample:
             losses.append(in_sample["loss"])
-            return_distances.append(np.abs(mean_ret.cpu()-np.sum(in_sample["reward"])))
+            # return_distances.append(np.abs(mean_ret.cpu()-np.sum(in_sample["reward"])))
+            try:
+                return_distances.append(np.abs(mean_ret.cpu()-np.sum(in_sample["reward"])))
+            except:
+                return_distances.append(np.abs(mean_ret - np.sum(in_sample["reward"])))
             #has no id yet
             ids.append(-1)
 
-        rd_ranks=rankdata(return_distances,"ordinal")
-        losses_ranks=rankdata(losses,"ordinal")
+        rd_ranks=rankdata(return_distances)
+        losses_ranks=rankdata(losses)
         combined_ranks=rd_ranks+losses_ranks
         ret=list(zip(ids,combined_ranks))
         return ret
@@ -113,10 +166,16 @@ class LessonReplayBuffer():
         losses=np.array(losses,dtype=float)
         probs = self.softmax(losses)
         sample_id = self.rnd_gen.choice(ids, p=probs)
-        sample = self.replay_buffer[sample_id]
+        if self.use_list:
+            sample = self.replay_buffer_list[sample_id]
+        else:
+            sample = self.replay_buffer_dict[sample_id]
         sample['id'] = sample_id
         return sample
 
     def update_sample_loss(self, loss, id):
         """Update loss of sample id"""
-        self.replay_buffer[id]['loss'] = loss
+        if self.use_list:
+            self.replay_buffer_list[id]['loss'] = loss
+        else:
+            self.replay_buffer_dict[id]['loss'] = loss
