@@ -1,15 +1,22 @@
+print("imported base")
 import threading
 from abc import ABC, abstractmethod
-
+# from myScripts.rudder import train_old_samples
 import numpy as np
 import torch
-import multiprocessing as mp
-from multiprocessing import Process
+# torch.multiprocessing.set_start_method('spawn',force=True)
+import torch.multiprocessing as mp
+# from multiprocessing.reduce import ForkingPickler, AbstractReducer
+from torch.multiprocessing import Process, Pool
+# from multiprocessing import Process
 from babyai.rl.format import default_preprocess_obss
 from babyai.rl.utils import DictList, ParallelEnv
 from babyai.rl.utils.supervised_losses import ExtraInfoCollector
 from myScripts.rudder import Rudder
 import copy
+
+
+
 
 class BaseAlgo(ABC):
     """The base class for RL algorithms."""
@@ -83,8 +90,20 @@ class BaseAlgo(ABC):
         rudder_dict_keys=["reward","image","instr","action","done","embed","timestep"]
         self.rudder=Rudder( self.num_procs,rudder_dict_keys,self.rudder_device,rudder_own_net,acmodel.memory_dim,
                             acmodel.image_dim,acmodel.instr_dim)
-        # self.p = Process(target=self.rudder.train_old_samples)
+        self.parallel_train_func=None
+        print("before context")
+        # self.ctx = mp.get_context('spawn')
+        # self.p = ctx.Process(target=self.parallel_train_func, args=(self.rudder,))
+        # self.pool=self.ctx.Pool(1)#,maxtasksperchild=1)
+        self.pool=None
+        self.queue=None
+
+        self.my_callback=None
+        self.my_error_callback=None
         self.old_rew = None
+        self.torch_spawn_context=None
+        self.process_running = False
+        self.async_status =None
         # self.download_thread = threading.Thread(target=self.rudder.train_old_samples())
         # if self.rudder_own_net:
         #     self.rudder = Net(128 * 2, 7, 128 * 2, device=self.device, own_net=self.rudder_own_net).to(self.device)
@@ -101,6 +120,10 @@ class BaseAlgo(ABC):
 
         self.obs = self.env.reset()
         self.obss = [None] * (shape[0])
+
+        #APEX requires dtype=torch.float16
+        # self.memory = torch.zeros(shape[1], self.acmodel.memory_size, device=self.device,dtype=torch.float16)
+        # self.memories = torch.zeros(*shape, self.acmodel.memory_size, device=self.device,dtype=torch.float16)
 
         self.memory = torch.zeros(shape[1], self.acmodel.memory_size, device=self.device)
         self.memories = torch.zeros(*shape, self.acmodel.memory_size, device=self.device)
@@ -126,6 +149,8 @@ class BaseAlgo(ABC):
         self.log_return = [0] * self.num_procs
         self.log_reshaped_return = [0] * self.num_procs
         self.log_num_frames = [0] * self.num_procs
+
+
 
     def collect_experiences(self):
         """Collects rollouts and computes advantages.
@@ -176,39 +201,73 @@ class BaseAlgo(ABC):
             # dic["embed"]=torch.zeros(embed.shape).to(device=self.rudder_device)
             dic["embed"] = embed.to(device=self.rudder_device)
             dic["timestep"]=i
-
-            proc_data=self.rudder.add_data(dic)
+            if self.async_status and self.async_status.ready():
+                self.process_running = False
+            if self.async_status:
+                if i==39:
+                    print("danger")
+                print("timestep",i,self.async_status)
+            proc_data=self.rudder.add_data(dic,self.process_running)
             # del proc_data
-
             # if torch.sum(torch.stack(proc_data[0]["reward"]))>20:
             #     print("bad")
             if self.rudder.buffer_full() and self.rudder.different_returns():
                 # print(reward)
                 if  self.rudder.replayBuffer.added_new_sample:
-                    # if __name__ == '__main__':
-                    #     print("lol")
+                    self.rudder.rudder_net.share_memory()
+                    if not self.process_running:#self.async_status:
+                        self.process_running = True
+                        self.rudder.training_done = False
+                        # self.async_status=self.pool.apply_async(self.parallel_train_func,(self.rudder,),callback=self.my_callback,error_callback=self.my_error_callback)
+                        # self.torch_spawn_context=torch.multiprocessing.spawn(self.parallel_train_func, (self.rudder,self.queue,),join=False)
+                        self.p.start()
+                        print("started the process   ##################################################################################################################################")
+
+                    if self.process_running and not self.p.is_alive():
+                        print("ended the process   ##################################################################################################################################")
+                        if not self.queue.empty():
+                            loss_ids = self.queue.get()
+                            for tup in loss_ids:
+                                self.rudder.replayBuffer.update_sample_loss(tup[0].item(),tup[1])
+                            self.rudder.training_done=True
+                            self.process_running = False
+                            # self.pool.close()
+                            # self.async_status=None
+
+                            # self.pool = self.ctx.Pool(1,maxtasksperchild=1)
+                            # self.rudder.replayBuffer=self.async_status.get()
+
+
+                    # if self.async_status and self.async_status.ready():
+                    #     print(
+                    #         "ended the process   ##################################################################################################################################")
+                    #     print("but sadly not with callback")
+                    #     loss_ids=self.async_status.get()
+                    #     for tup in loss_ids:
+                    #         self.rudder.replayBuffer.update_sample_loss(tup[0].item(),tup[1])
+                    #     self.rudder.training_done=True
+                    #     self.pool.close()
+                    #     self.async_status=None
                     #
-                    # if not self.p.is_alive():
-                    #     self.p.start()  # start execution of myFunc() asychronously
-                    # print('something')
+                    #     self.pool = self.ctx.Pool(1,maxtasksperchild=1)
+                    #     # self.rudder.replayBuffer=self.async_status.get()
 
+                    # self.rudder_loss=self.rudder.train_old_samples().item()
+                if self.rudder.training_done:
+                    rew=self.rudder.predict_reward(dic)
+                    if type(self.old_rew) != type(None):
+                        redistributed_reward = rew-self.old_rew
 
-                    self.rudder_loss=self.rudder.train_old_samples().item()
-
-                rew=self.rudder.predict_reward(proc_data)
-                if type(self.old_rew) != type(None):
-                    redistributed_reward = rew-self.old_rew
-
-                else:
-                    redistributed_reward=0-rew
-                # del self.rewards[i]
-                self.rewards[i]=redistributed_reward.reshape(len(self.rewards[i]),)
-                self.old_rew=rew
-                m=reward>0
-                m1=reward[m]
-                m2=rew[m]
-                assert 0==0
-                # print(reward)
+                    else:
+                        redistributed_reward=0-rew
+                    # del self.rewards[i]
+                    self.rewards[i]=redistributed_reward.reshape(len(self.rewards[i]),)
+                    self.old_rew=rew
+                    m=reward>0
+                    m1=reward[m]
+                    m2=rew[m]
+                    assert 0==0
+                    # print(reward)
 
             else:
 
@@ -280,6 +339,7 @@ class BaseAlgo(ABC):
             myActs=action.detach().clone()
             # do_my_stuff2(action, preprocessed_obs.image,preprocessed_obs.instr, self.rewards[i], done,embed,i)
             do_my_stuff2(myActs, myIms, myINstrs, myrews, done, embed, i)
+            print("after my stuff",i)
             # if i==0:
             #     self.rewards_chache.append(self.rewards[i])
             ###### MYSTUFF ########

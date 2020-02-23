@@ -1,4 +1,5 @@
 import torch
+# torch.backends.cudnn.benchmark = True
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable

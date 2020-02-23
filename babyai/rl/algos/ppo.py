@@ -2,7 +2,8 @@ import numpy
 import torch
 import torch.nn.functional as F
 import gc
-
+import apex
+from apex import amp
 from babyai.rl.algos.base import BaseAlgo
 
 
@@ -16,7 +17,9 @@ class PPOAlgo(BaseAlgo):
                  adam_eps=1e-5, clip_eps=0.2, epochs=4, batch_size=256, preprocess_obss=None,
                  reshape_reward=None, aux_info=None,use_rudder=False,rudder_own_net=False,env_max_steps=128):
         num_frames_per_proc = num_frames_per_proc or 128
-
+        # APEX
+        # self.optimizer = torch.optim.Adam(acmodel.parameters(), lr, (beta1, beta2), eps=adam_eps)
+        # acmodel, self.optimizer = amp.initialize(acmodel, self.optimizer,opt_level="O1")
         super().__init__(envs, acmodel, num_frames_per_proc, discount, lr, gae_lambda, entropy_coef,
                          value_loss_coef, max_grad_norm, recurrence, preprocess_obss, reshape_reward,
                          aux_info,use_rudder,rudder_own_net,env_max_steps)
@@ -46,9 +49,9 @@ class PPOAlgo(BaseAlgo):
         (n_procs * n_frames_per_proc) x k 2D tensors where k is the number of classes for multiclass classification
         '''
         rudder_losses = []
-        for _ in range(self.epochs):
+        for myEpoch in range(self.epochs):
             # Initialize log values
-
+            print("ppo epoch",myEpoch)
             log_entropies = []
             log_values = []
             log_policy_losses = []
@@ -77,6 +80,7 @@ class PPOAlgo(BaseAlgo):
                 batch_loss = 0
 
                 # Initialize memory
+                print("inds[0]",inds[0])
 
                 memory = exps.memory[inds]
 
@@ -130,6 +134,9 @@ class PPOAlgo(BaseAlgo):
                 # Update actor-critic
 
                 self.optimizer.zero_grad()
+                #APEX
+                # with amp.scale_loss(batch_loss, self.optimizer) as scaled_loss:
+                #     scaled_loss.backward()
                 batch_loss.backward()
                 grad_norm = sum(p.grad.data.norm(2) ** 2 for p in self.acmodel.parameters() if p.grad is not None) ** 0.5
                 torch.nn.utils.clip_grad_norm_(self.acmodel.parameters(), self.max_grad_norm)

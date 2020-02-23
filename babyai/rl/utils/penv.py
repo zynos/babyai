@@ -1,7 +1,7 @@
 from multiprocessing import Process, Pipe
 import gym
 
-def worker(conn, env):
+def  worker(conn, env):
     while True:
         cmd, data = conn.recv()
         if cmd == "step":
