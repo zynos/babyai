@@ -59,7 +59,7 @@ class LessonReplayBuffer():
 
         if self.use_list:
             # id=np.random.randint(len(self.replay_buffer2))
-            print("replace",id)
+            # print("replace",id)
 
             self.replay_buffer_list[id]=None
             self.replay_buffer_list[id]=sample
@@ -105,11 +105,11 @@ class LessonReplayBuffer():
             low_sample_rank=keys_ranks[low_sample_ind][1]
             if sample_rank > low_sample_rank:
                 id =keys_ranks[low_sample_ind][0]
-                print("replace {} with {} id {}".format(low_sample_rank,sample_rank,id))
+                # print("replace {} with {} id {}".format(low_sample_rank,sample_rank,id))
                 self.replaced_indices.add(id)
                 self.replace_entry(id,sample)
                 self.added_new_sample=True
-                print("never replaced:",set(range(self.max_buffersize))-self.replaced_indices)
+                # print("never replaced:",set(range(self.max_buffersize))-self.replaced_indices)
             else:
                 self.added_new_sample = False
 

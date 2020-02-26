@@ -50,9 +50,10 @@ class Rudder():
         self.device=device
         self.rudder_net=Net(instr_dim, embed_mem_dim,7,32 , image_dim, device=device,own_net=own_net).to(device=device)
         self.optimizer = torch.optim.Adam(self.rudder_net.parameters(), lr=1e-3, weight_decay=1e-4)
-        self.replayBuffer=LessonReplayBuffer(64, buffer_dict_fields)
+        self.replayBuffer=LessonReplayBuffer(128, buffer_dict_fields)
         self.reward_scale = 20
         self.quality_threshold = 0.8
+        # self.quality_threshold = -8
         self.current_loss = 0
         self.training_done = False
         # self.parallel_train_func=train_old_samples
@@ -117,8 +118,10 @@ class Rudder():
             actions=actions.unsqueeze(0)
         if isinstance(embeds, tuple):
             embeds = torch.stack(embeds)
+        else:
+            embeds = embeds.unsqueeze(0)
         embeds=embeds.unsqueeze(0)
-        one_hot = torch.nn.functional.one_hot(actions, 7).float().unsqueeze(0)
+        one_hot = torch.nn.functional.one_hot(actions, 7).float().unsqueeze(0) #dangerous
         # x = x.reshape(x.shape[0], -1)
         input = torch.cat([all_ims, all_instrs, one_hot, embeds], dim=-1)
         if batch:
@@ -184,7 +187,7 @@ class Rudder():
                     rews.append(pred.squeeze()[-1])
                 except:
                     rews.append(pred.squeeze(1)[-1].squeeze())
-            assert np.sum(sample["reward"])<20
+            # assert np.sum(sample["reward"])<20
 
         return torch.stack(rews)
 

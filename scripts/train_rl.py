@@ -9,13 +9,13 @@ import logging
 import csv
 import json
 from collections import Counter
-from torch.multiprocessing import SimpleQueue
+from torch.multiprocessing.queue import Queue
 import gym
 import time
 import datetime
 import torch
 
-torch.backends.cudnn.benchmark = True
+# torch.backends.cudnn.benchmark = True
 import numpy as np
 import subprocess
 import babyai
@@ -26,22 +26,28 @@ from babyai.model import ACModel
 from babyai.evaluate import batch_evaluate
 from babyai.utils.agent import ModelAgent
 from torch import multiprocessing as mp
+print("cuda",torch.version.cuda)
+print("cudnn",torch.backends.cudnn.version())
 
-def train_old_samples(rudder,queue: SimpleQueue):
+def train_old_samples(rudder,queue):
+# def train_old_samples(rudder):
     end = False
     ids = []
     new_sample_losses=[]
     while not end:
         qualitys = []
+        # print("queue size",queue.qsize())
         for i in range(rudder.rudder_train_samples_per_epochs):
             sample = rudder.replayBuffer.get_sample()
             loss, quality =  rudder.train_rudder(sample)
-            new_sample_losses.append((loss.detach() , sample["id"]))
+            new_sample_losses.append((loss.detach().clone().item() , sample["id"]))
+            # queue.put((loss.detach() , sample["id"]))
             # rudder.replayBuffer.update_sample_loss(loss, sample["id"])
             ids.append(sample["id"])
             # print("loss {}, quality {}, sample {} ".format(loss.item(), quality.item(), sample["id"]))
             qualitys.append((quality >= 0).item())
         print("loss, qualities",loss.item(), qualitys)
+
         if False in qualitys:
             end = False
         else:
@@ -53,7 +59,15 @@ def train_old_samples(rudder,queue: SimpleQueue):
     rudder.training_done = True
     # self.rudder_net.lstm1.plot_internals(filename=None, show_plot=True, mb_index=0, fdict=dict(figsize=(8, 8), dpi=100))
     # ret=copy.deepcopy(rudder.replayBuffer)
-    queue.put(new_sample_losses)
+    queue.put(new_sample_losses, block=True)
+    # print("before queue put")
+    queue.put("end", block=True)
+
+    # queue.put(new_sample_losses)
+    # print(queue)
+    # queue.join()
+    # print("exitiging")
+    queue.close()
     return new_sample_losses
 
 def my_callback( argi):
@@ -163,17 +177,18 @@ if __name__ == '__main__':
                                  reshape_reward,use_rudder=use_rudder,rudder_own_net=rudder_own_net,env_max_steps=env.max_steps)
 
         ctx = mp.get_context('spawn')
-        pool = ctx.Pool(1, maxtasksperchild=1)
+        # pool = ctx.Pool(1, maxtasksperchild=1)
         # algo.parallel_train_func=train_old_samples
         # algo.ctx = mp.get_context('spawn')
-        # # self.p = ctx.Process(target=self.parallel_train_func, args=(self.rudder,))
-        # algo.pool = algo.ctx.Pool(1, maxtasksperchild=1)
+        # self.p = ctx.Process(target=self.parallel_train_func, args=(self.rudder,))
         algo.parallel_train_func=train_old_samples
-        algo.pool=pool
+        # algo.pool=pool
         algo.my_callback=my_callback
         algo.my_error_callback=my_err_callback
-        algo.queue=SimpleQueue()
-        algo.p = ctx.Process(target=train_old_samples, args=(algo.rudder,algo.queue))
+        algo.ctx=ctx
+        algo.pool = algo.ctx.Pool(1, maxtasksperchild=1)
+        algo.queue=ctx.Queue()
+        algo.p = ctx.Process(target= algo.parallel_train_func, args=(algo.rudder,algo.queue,))
     else:
         raise ValueError("Incorrect algorithm name: {}".format(args.algo))
 

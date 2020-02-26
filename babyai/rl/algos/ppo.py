@@ -51,7 +51,7 @@ class PPOAlgo(BaseAlgo):
         rudder_losses = []
         for myEpoch in range(self.epochs):
             # Initialize log values
-            print("ppo epoch",myEpoch)
+            # print("ppo epoch",myEpoch)
             log_entropies = []
             log_values = []
             log_policy_losses = []
@@ -80,7 +80,7 @@ class PPOAlgo(BaseAlgo):
                 batch_loss = 0
 
                 # Initialize memory
-                print("inds[0]",inds[0])
+                # print("inds[0]",inds[0])
 
                 memory = exps.memory[inds]
 
@@ -141,8 +141,8 @@ class PPOAlgo(BaseAlgo):
                 grad_norm = sum(p.grad.data.norm(2) ** 2 for p in self.acmodel.parameters() if p.grad is not None) ** 0.5
                 torch.nn.utils.clip_grad_norm_(self.acmodel.parameters(), self.max_grad_norm)
                 self.optimizer.step()
-                gc.collect()
-                torch.cuda.empty_cache()
+                # gc.collect()
+                # torch.cuda.empty_cache()
 
                 # Update log values
 
