@@ -53,14 +53,16 @@ class LessonReplayBuffer():
         return keys_losses
 
     def replace_entry(self,id,sample):
-        # assert np.sum(sample["reward"]) < 20
+        assert np.sum(sample["reward"]) < 20
         # del self.replay_buffer[id]
         # print(torch.cuda.memory_summary)
 
         if self.use_list:
-            # id=np.random.randint(len(self.replay_buffer2))
+            # id=np.random.randint(len(self.replay_buffer_list))
             # print("replace",id)
-
+            # old=self.replay_buffer_list[id]
+            # del old
+            # torch.cuda.empty_cache()
             self.replay_buffer_list[id]=None
             self.replay_buffer_list[id]=sample
             del sample
@@ -106,10 +108,18 @@ class LessonReplayBuffer():
             if sample_rank > low_sample_rank:
                 id =keys_ranks[low_sample_ind][0]
                 # print("replace {} with {} id {}".format(low_sample_rank,sample_rank,id))
+                # id = np.random.randint(len(self.replay_buffer_list))
                 self.replaced_indices.add(id)
                 self.replace_entry(id,sample)
                 self.added_new_sample=True
-                # print("never replaced:",set(range(self.max_buffersize))-self.replaced_indices)
+                diff=set(range(self.max_buffersize))-self.replaced_indices
+                if len(diff)==1:
+                    single_id=next(iter(diff))
+                    print("id, loss , return",single_id,self.replay_buffer_list[single_id]["loss"],
+                          self.replay_buffer_list[single_id]["reward"][-1])
+                if len(diff)==0:
+                    self.replaced_indices=set()
+                print("never replaced:",diff)
             else:
                 self.added_new_sample = False
 

@@ -115,13 +115,13 @@ class Net(torch.nn.Module):
         #                           return_all_seq_pos=True  # return predictions for all sequence positions
         #                           )
         if hidden==None:
-            lstm_out,hidden=self.myLstm1(input)
+            x,hidden=self.myLstm1(input)
         else:
-            lstm_out, hidden = self.myLstm1(input,hidden)
+            x, hidden = self.myLstm1(input,hidden)
         # lstm_out,_ = self.myLstm2(lstm_out)
 
-        net_out = self.fc_out(lstm_out)
-        return net_out,hidden
+        x = self.fc_out(x)
+        return x,hidden
 
     def forward(self, input,hidden):
         # if len(self.replay_buffer) > 0:

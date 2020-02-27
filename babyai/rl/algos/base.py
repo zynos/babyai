@@ -280,14 +280,9 @@ class BaseAlgo(ABC):
             # dic["embed"]=torch.zeros(embed.shape).to(device=self.rudder_device)
             dic["embed"] = embed.to(device=self.rudder_device)
             dic["timestep"]=i
-            # if self.async_status and self.async_status.ready():
-            #     self.process_running = False
-            # if self.async_status:
-            #     if i==37:
-            #         print("danger")
-            #     # print("timestep",i,self.async_status)
             proc_data=self.rudder.add_data(dic,self.process_running)
-            # del proc_data
+            del proc_data
+
             # if torch.sum(torch.stack(proc_data[0]["reward"]))>20:
             #     print("bad")
             if self.rudder.buffer_full() and self.rudder.different_returns():

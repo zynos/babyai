@@ -151,6 +151,8 @@ class Rudder():
         rews = sample["reward"]
         rews = torch.tensor(rews, device=self.device).unsqueeze(0)
         pred,hidden=self.feed_rudder(sample)
+        del hidden
+        torch.cuda.empty_cache()
         loss, tup = self.lossfunction(pred, rews)
         loss.backward()
         self.optimizer.step()
@@ -233,13 +235,13 @@ class Rudder():
     #     return loss
 
     def add_data(self,sample:dict,training_running):
-        processes_data=dict()
+        # processes_data=dict()
         for process_id in range(self.nr_procs):
             # tmp = self.preReplayBuffer.replay_buffer_dict[process_id]
             # if tmp["reward"] and tmp["reward"][0] > 0:
             #     print("shits go down")
             timesteps=self.preReplayBuffer.add_timestep_data(sample,process_id)
-            processes_data[process_id]=timesteps
+            # processes_data[process_id]=timesteps
             if not training_running:
                 if len(self.preReplayBuffer.send_to_rudder)>0:
                     sort=sorted(self.preReplayBuffer.send_to_rudder, key = lambda i: len(i['timestep']),reverse = True)
@@ -254,7 +256,7 @@ class Rudder():
                             torch.cuda.empty_cache()
 
                     self.preReplayBuffer.send_to_rudder=[]
-        return processes_data
+        return #processes_data
 
     def lossfunction(self, predictions, rewards):
         # from https://github.com/widmi/rudder-a-practical-tutorial/blob/master/tutorial.ipynb

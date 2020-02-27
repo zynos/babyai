@@ -51,7 +51,7 @@ class preReplayBuffer():
                     self.replay_buffer_list[process_id][key].append(value[process_id])
                 else:
                     self.replay_buffer_dict[process_id][key].append(value[process_id])
-        tmp=self.replay_buffer_list[process_id]
+        # tmp=self.replay_buffer_list[process_id]
         self.check_assertions(process_id)
         if sample["done"][process_id]==True:
             self.lists_to_tuples(process_id)
@@ -62,6 +62,6 @@ class preReplayBuffer():
                 self.send_to_rudder.append(self.replay_buffer_dict[process_id])
 
             self.init_buffer_at(process_id)
-        return tmp
+        return #tmp
 
 

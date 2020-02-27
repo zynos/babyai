@@ -15,7 +15,7 @@ import time
 import datetime
 import torch
 
-# torch.backends.cudnn.benchmark = True
+torch.backends.cudnn.benchmark = True
 import numpy as np
 import subprocess
 import babyai
@@ -28,58 +28,60 @@ from babyai.utils.agent import ModelAgent
 from torch import multiprocessing as mp
 print("cuda",torch.version.cuda)
 print("cudnn",torch.backends.cudnn.version())
+from myScripts import  asyncTrain
 
-def train_old_samples(rudder,queue):
-# def train_old_samples(rudder):
-    end = False
-    ids = []
-    new_sample_losses=[]
-    while not end:
-        qualitys = []
-        # print("queue size",queue.qsize())
-        for i in range(rudder.rudder_train_samples_per_epochs):
-            sample = rudder.replayBuffer.get_sample()
-            loss, quality =  rudder.train_rudder(sample)
-            new_sample_losses.append((loss.detach().clone().item() , sample["id"]))
-            # queue.put((loss.detach() , sample["id"]))
-            # rudder.replayBuffer.update_sample_loss(loss, sample["id"])
-            ids.append(sample["id"])
-            # print("loss {}, quality {}, sample {} ".format(loss.item(), quality.item(), sample["id"]))
-            qualitys.append((quality >= 0).item())
-        print("loss, qualities",loss.item(), qualitys)
-
-        if False in qualitys:
-            end = False
-        else:
-            end = True
-    idc = Counter(ids)
-    rudder.current_loss = loss
-    torch.cuda.empty_cache()
-    rudder.replayBuffer.added_new_sample = False
-    rudder.training_done = True
-    # self.rudder_net.lstm1.plot_internals(filename=None, show_plot=True, mb_index=0, fdict=dict(figsize=(8, 8), dpi=100))
-    # ret=copy.deepcopy(rudder.replayBuffer)
-    queue.put(new_sample_losses, block=True)
-    # print("before queue put")
-    queue.put("end", block=True)
-
-    # queue.put(new_sample_losses)
-    # print(queue)
-    # queue.join()
-    # print("exitiging")
-    queue.close()
-    return new_sample_losses
-
-def my_callback( argi):
-    print(argi)
-    print(
-        "ended the process   ##################################################################################################################################")
-
-
-def my_err_callback( lol):
-    print(lol)
-    print(
-        "failed the process   ##################################################################################################################################")
+# def train_old_samples(rudder,queue):
+# # def train_old_samples(rudder):
+#     end = False
+#     ids = []
+#     new_sample_losses=[]
+#     while not end:
+#         qualitys = []
+#         # print("queue size",queue.qsize())
+#         for i in range(rudder.rudder_train_samples_per_epochs):
+#             sample = rudder.replayBuffer.get_sample()
+#             loss, quality =  rudder.train_rudder(sample)
+#             new_sample_losses.append((loss.detach().clone().item() , sample["id"]))
+#             del loss
+#             torch.cuda.empty_cache()
+#             # queue.put((loss.detach() , sample["id"]))
+#             # rudder.replayBuffer.update_sample_loss(loss, sample["id"])
+#             ids.append(sample["id"])
+#             # print("loss {}, quality {}, sample {} ".format(loss.item(), quality.item(), sample["id"]))
+#             qualitys.append((quality >= 0).item())
+#         print("loss, qualities",new_sample_losses[-1][0], qualitys)
+#
+#         if False in qualitys:
+#             end = False
+#         else:
+#             end = True
+#     idc = Counter(ids)
+#     torch.cuda.empty_cache()
+#     rudder.replayBuffer.added_new_sample = False
+#     rudder.training_done = True
+#     # self.rudder_net.lstm1.plot_internals(filename=None, show_plot=True, mb_index=0, fdict=dict(figsize=(8, 8), dpi=100))
+#     # ret=copy.deepcopy(rudder.replayBuffer)
+#     queue.put(new_sample_losses, block=True)
+#     # print("before queue put")
+#     queue.put("end", block=True)
+#
+#     # queue.put(new_sample_losses)
+#     # print(queue)
+#     # queue.join()
+#     # print("exitiging")
+#     queue.close()
+#     return new_sample_losses
+#
+# def my_callback( argi):
+#     print(argi)
+#     print(
+#         "ended the process   ##################################################################################################################################")
+#
+#
+# def my_err_callback( lol):
+#     print(lol)
+#     print(
+#         "failed the process   ##################################################################################################################################")
 
 if __name__ == '__main__':
     # torch.set_num_threads(1)
@@ -181,10 +183,11 @@ if __name__ == '__main__':
         # algo.parallel_train_func=train_old_samples
         # algo.ctx = mp.get_context('spawn')
         # self.p = ctx.Process(target=self.parallel_train_func, args=(self.rudder,))
-        algo.parallel_train_func=train_old_samples
+        # algo.parallel_train_func=train_old_samples
+        algo.parallel_train_func=asyncTrain.train_old_samples
         # algo.pool=pool
-        algo.my_callback=my_callback
-        algo.my_error_callback=my_err_callback
+        algo.my_callback=asyncTrain.train_old_samples
+        algo.my_error_callback=asyncTrain.train_old_samples
         algo.ctx=ctx
         algo.pool = algo.ctx.Pool(1, maxtasksperchild=1)
         algo.queue=ctx.Queue()
