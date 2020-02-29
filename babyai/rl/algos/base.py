@@ -260,31 +260,7 @@ class BaseAlgo(ABC):
 
 
 
-
-
-
-        def do_my_stuff2(action,image,instr,reward,done,embed,i):
-            # iterate over every process
-
-            dic=dict()
-            dic["reward"]=reward.to(device=self.rudder_device)
-            # dic["reward"]=torch.zeros(reward.shape).to(device=self.rudder_device)
-            dic["image"]=image.to(device=self.rudder_device)
-            # dic["image"]=torch.rand(image.shape).to(device=self.rudder_device)
-
-            # dic["instr"] = torch.zeros(instr.shape,dtype=torch.long).to(device=self.rudder_device)
-            dic["instr"] = instr.to(device=self.rudder_device)
-            # dic["action"] = torch.zeros(action.shape,dtype=torch.int64).to(device=self.rudder_device)
-            dic["action"] = action.to(device=self.rudder_device)
-            dic["done"]=done
-            # dic["embed"]=torch.zeros(embed.shape).to(device=self.rudder_device)
-            dic["embed"] = embed.to(device=self.rudder_device)
-            dic["timestep"]=i
-            proc_data=self.rudder.add_data(dic,self.process_running)
-            del proc_data
-
-            # if torch.sum(torch.stack(proc_data[0]["reward"]))>20:
-            #     print("bad")
+        def train_and_predict(dic):
             if self.rudder.buffer_full() and self.rudder.different_returns():
                 # print(reward)
                 if  self.rudder.replayBuffer.added_new_sample:
@@ -306,6 +282,53 @@ class BaseAlgo(ABC):
             else:
                 self.rudder_loss=0.0
 
+        def debug_predict_only(dic):
+            if self.rudder.buffer_full():
+                rew = self.rudder.predict_reward(dic)
+                if type(self.old_rew) != type(None):
+                    redistributed_reward = rew - self.old_rew
+
+                else:
+                    redistributed_reward = 0 - rew
+                # del self.rewards[i]
+                self.rewards[i] = redistributed_reward.reshape(len(self.rewards[i]), )
+                self.old_rew = rew
+                assert 0 == 0
+                    # print(reward)
+            else:
+                self.rudder_loss = 0.0
+
+
+        def create_input_dict(action,image,instr,reward,done,embed,i):
+            dic = dict()
+            dic["reward"] = reward#.to(device=self.rudder_device)
+            # dic["reward"]=torch.zeros(reward.shape).to(device=self.rudder_device)
+            dic["image"] = image#.to(device=self.rudder_device)
+            # dic["image"]=torch.rand(image.shape).to(device=self.rudder_device)
+
+            # dic["instr"] = torch.zeros(instr.shape,dtype=torch.long).to(device=self.rudder_device)
+            dic["instr"] = instr#.to(device=self.rudder_device)
+            # dic["action"] = torch.zeros(action.shape,dtype=torch.int64).to(device=self.rudder_device)
+            dic["action"] = action#.to(device=self.rudder_device)
+            dic["done"] = done
+            # dic["embed"]=torch.zeros(embed.shape).to(device=self.rudder_device)
+            dic["embed"] = embed#.to(device=self.rudder_device)
+            dic["timestep"] = i
+            return dic
+
+        def do_my_stuff2(action,image,instr,reward,done,embed,i):
+            # iterate over every process
+            dic=create_input_dict(action,image,instr,reward,done,embed,i)
+            dic["embed"] =torch.rand_like(dic["embed"])
+            proc_data=self.rudder.add_data(dic,self.process_running)
+            # del proc_data
+
+            # if torch.sum(torch.stack(proc_data[0]["reward"]))>20:
+            #     print("bad")
+
+            # train_and_predict(dic)
+            # debug_predict_only(dic)
+
 
 
         for i in range(self.num_frames_per_proc):
@@ -319,8 +342,8 @@ class BaseAlgo(ABC):
                 memory = model_results['memory']
                 extra_predictions = model_results['extra_predictions']
 
-            embed = model_results["embed"]
-            embeddings.append(embed.detach().clone())
+            embed = model_results["embed"].detach().clone()
+            # embeddings.append(embed.detach().clone())
 
             action = dist.sample()
             # actions.append(action.clone().detach())
@@ -370,6 +393,7 @@ class BaseAlgo(ABC):
             myIms=preprocessed_obs.image.detach().clone()
             myINstrs=preprocessed_obs.instr.detach().clone()
             myActs=action.detach().clone()
+            embed=torch.rand_like(embed)
             # do_my_stuff2(action, preprocessed_obs.image,preprocessed_obs.instr, self.rewards[i], done,embed,i)
             do_my_stuff2(myActs, myIms, myINstrs, myrews, done, embed, i)
             # print("after my stuff",i)

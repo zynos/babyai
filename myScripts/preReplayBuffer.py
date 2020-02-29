@@ -55,11 +55,12 @@ class preReplayBuffer():
         self.check_assertions(process_id)
         if sample["done"][process_id]==True:
             self.lists_to_tuples(process_id)
+            if len(self.send_to_rudder) < 100:
 
-            if self.use_list:
-                self.send_to_rudder.append(self.replay_buffer_list[process_id])
-            else:
-                self.send_to_rudder.append(self.replay_buffer_dict[process_id])
+                if self.use_list:
+                    self.send_to_rudder.append(self.replay_buffer_list[process_id])
+                else:
+                    self.send_to_rudder.append(self.replay_buffer_dict[process_id])
 
             self.init_buffer_at(process_id)
         return #tmp

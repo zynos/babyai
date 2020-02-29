@@ -81,20 +81,21 @@ class Rudder():
         #     acts = acts.unsqueeze(0)
         return ims,instrs,acts,embs
 
+
     def pre_process_images(self, image):
         if not isinstance(image, tuple) and image.ndim==3:
             # [7 7 3] to [3 7 7]
-            it= image.transpose(0,2).unsqueeze(0)
-            x = self.rudder_net.image_conv(it)
+            x= image.transpose(0,2).unsqueeze(0)
+            x = self.rudder_net.image_conv(x)
             return x.squeeze(2).squeeze(2).unsqueeze(0)
         all_ims = []
         for idx, i in enumerate(image):
             # it = torch.transpose(torch.transpose(i, 1, 3), 2, 3)
-            it = torch.transpose(i, 0, 2).unsqueeze(0)
+            x = torch.transpose(i, 0, 2).unsqueeze(0)
 
-            x = self.rudder_net.image_conv(it)
+            x = self.rudder_net.image_conv(x)
             all_ims.append(x.squeeze(2).squeeze(2))
-        type(image)
+        # type(image)
         all_ims = torch.stack(all_ims)
         return all_ims
 
@@ -140,11 +141,12 @@ class Rudder():
             rews = torch.tensor(rews, device=self.device).unsqueeze(0)
             pred,hidden = self.feed_rudder(sample)
             loss, _ = self.lossfunction(pred, rews)
-            # loss = loss.clone().detach()
-            # pred = pred.clone().detach()
-            self.optimizer.zero_grad()
+
+            loss = loss.clone().detach()
+            pred = pred.clone().detach()
+            # self.optimizer.zero_grad()
             torch.cuda.empty_cache()
-            return pred,loss.detach()
+            return pred,loss
 
     def train_rudder(self,sample):
         self.optimizer.zero_grad()
@@ -233,6 +235,29 @@ class Rudder():
     #     self.training_done=True
     #     # self.rudder_net.lstm1.plot_internals(filename=None, show_plot=True, mb_index=0, fdict=dict(figsize=(8, 8), dpi=100))
     #     return loss
+    def add_full_episodes_to_replay_buffer(self):
+        if len(self.preReplayBuffer.send_to_rudder) > 0:
+            sort = sorted(self.preReplayBuffer.send_to_rudder, key=lambda i: len(i['timestep']), reverse=True)
+            if len(sort) > 1:
+                assert 0 == 0
+            for i, batch in enumerate(sort):
+                with torch.no_grad():
+                    # tmp_embs = [] #no leak
+                    # for e in batch["embed"]:
+                    #     tmp_embs.append(torch.rand_like(e))
+                    # batch["embed"] = tuple(tmp_embs)
+                    self.rudder_net.eval()
+                    pred, loss = self.inference_rudder(batch)
+                    batch["loss"] = loss.item()
+                    # tmp_embs = []  #no leak
+                    # for e in batch["embed"]:
+                    #     tmp_embs.append(torch.rand_like(e))
+                    # batch["embed"] = tuple(tmp_embs)
+                    self.replayBuffer.consider_adding_sample(batch)
+                    del loss
+                    torch.cuda.empty_cache()
+
+            self.preReplayBuffer.send_to_rudder = []
 
     def add_data(self,sample:dict,training_running):
         # processes_data=dict()
@@ -243,19 +268,8 @@ class Rudder():
             timesteps=self.preReplayBuffer.add_timestep_data(sample,process_id)
             # processes_data[process_id]=timesteps
             if not training_running:
-                if len(self.preReplayBuffer.send_to_rudder)>0:
-                    sort=sorted(self.preReplayBuffer.send_to_rudder, key = lambda i: len(i['timestep']),reverse = True)
-                    if len(sort)>1:
-                        assert 0==0
-                    for i,batch in enumerate(sort):
-                        with torch.no_grad():
-                            pred,loss=self.inference_rudder(batch)
-                            batch["loss"]=loss.item()
-                            self.replayBuffer.consider_adding_sample(batch)
-                            del loss
-                            torch.cuda.empty_cache()
+                self.add_full_episodes_to_replay_buffer()
 
-                    self.preReplayBuffer.send_to_rudder=[]
         return #processes_data
 
     def lossfunction(self, predictions, rewards):

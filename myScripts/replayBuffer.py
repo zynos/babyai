@@ -63,8 +63,21 @@ class LessonReplayBuffer():
             # old=self.replay_buffer_list[id]
             # del old
             # torch.cuda.empty_cache()
+            #        rudder_dict_keys=["reward","image","instr","action","done","embed","timestep"]
+
             self.replay_buffer_list[id]=None
-            self.replay_buffer_list[id]=sample
+            sample2=dict()
+            sample2["loss"]=sample["loss"]
+            sample2["reward"]=sample["reward"]
+            # sample2["image"] = sample["image"] # leak
+            # sample2["instr"] = sample["instr"] # no leak or mini mini leak
+            # sample2["embed"] = torch.rand_like(torch.stack(sample["embed"]))
+            sample2["embed"] = sample["embed"] # mega leak
+            assert sample2["embed"] != None
+            del sample["embed"]
+            torch.cuda.empty_cache()
+            # sample2["done"]=sample["done"]
+            self.replay_buffer_list[id]=sample2
             del sample
             torch.cuda.empty_cache()
             assert self.replay_buffer_list[id] != None
