@@ -1,4 +1,7 @@
 import numpy as np
+import torch
+
+
 class preReplayBuffer():
     def __init__(self,nr_procs,dict_fields: list):
         self.replay_buffer_dict=dict()
@@ -32,6 +35,10 @@ class preReplayBuffer():
 
 
     def lists_to_tuples(self,process_id):
+        # tmp_embs = [] #no leak
+        # for e in self.replay_buffer_list[process_id]["embed"]:
+        #     tmp_embs.append(torch.rand_like(e))
+        # self.replay_buffer_list[process_id]["embed"] = tmp_embs
         for key, value in self.replay_buffer_list[process_id].items():
             if isinstance(value, list):
                 self.replay_buffer_list[process_id][key]=tuple(value)
@@ -54,13 +61,12 @@ class preReplayBuffer():
         # tmp=self.replay_buffer_list[process_id]
         self.check_assertions(process_id)
         if sample["done"][process_id]==True:
-            self.lists_to_tuples(process_id)
-            if len(self.send_to_rudder) < 100:
+            self.lists_to_tuples(process_id) # no leak
 
-                if self.use_list:
-                    self.send_to_rudder.append(self.replay_buffer_list[process_id])
-                else:
-                    self.send_to_rudder.append(self.replay_buffer_dict[process_id])
+            if self.use_list:
+                self.send_to_rudder.append(self.replay_buffer_list[process_id])
+            else:
+                self.send_to_rudder.append(self.replay_buffer_dict[process_id])
 
             self.init_buffer_at(process_id)
         return #tmp

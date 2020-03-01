@@ -9,6 +9,7 @@ from torch.multiprocessing import Pool
 from .preReplayBuffer import preReplayBuffer
 from collections import Counter
 
+
 # def train_old_samples(rudder):
 #     end = False
 #     ids = []
@@ -36,21 +37,22 @@ from collections import Counter
 #     # self.rudder_net.lstm1.plot_internals(filename=None, show_plot=True, mb_index=0, fdict=dict(figsize=(8, 8), dpi=100))
 #     # ret=copy.deepcopy(rudder.replayBuffer)
 #     return new_sample_losses
-    # return loss
+# return loss
 
 
 class Rudder():
     # has   preReplayBuffer
     #       rudder lstm
     #       replay buffer
-    def __init__(self,nr_procs,buffer_dict_fields,device,own_net,embed_mem_dim,image_dim,instr_dim):
+    def __init__(self, nr_procs, buffer_dict_fields, device, own_net, embed_mem_dim, image_dim, instr_dim):
         self.rudder_train_samples_per_epochs = 8
-        self.preReplayBuffer=preReplayBuffer(nr_procs,buffer_dict_fields)
-        self.nr_procs=nr_procs
-        self.device=device
-        self.rudder_net=Net(instr_dim, embed_mem_dim,7,32 , image_dim, device=device,own_net=own_net).to(device=device)
+        self.preReplayBuffer = preReplayBuffer(nr_procs, buffer_dict_fields)
+        self.nr_procs = nr_procs
+        self.device = device
+        self.rudder_net = Net(instr_dim, embed_mem_dim, 7, 32, image_dim, device=device, own_net=own_net).to(
+            device=device)
         self.optimizer = torch.optim.Adam(self.rudder_net.parameters(), lr=1e-3, weight_decay=1e-4)
-        self.replayBuffer=LessonReplayBuffer(128, buffer_dict_fields)
+        self.replayBuffer = LessonReplayBuffer(128, buffer_dict_fields)
         self.reward_scale = 20
         self.quality_threshold = 0.8
         # self.quality_threshold = -8
@@ -58,7 +60,7 @@ class Rudder():
         self.training_done = False
         # self.parallel_train_func=train_old_samples
         self.torch_spawn_context = None
-        self.last_hidden=[None]*nr_procs
+        self.last_hidden = [None] * nr_procs
 
         # self.rudder_net.share_memory()
         # if self.torch_spawn_context == None:
@@ -67,8 +69,8 @@ class Rudder():
         # with Pool(1) as p:
         #     print(p.map(self.parallel_train_func, [self.rudder_net]))
 
-    def preprocess_batch(self, sample,batch=False):
-        ims, instrs, acts,embs= sample["image"], sample["instr"], sample["action"],sample["embed"]
+    def preprocess_batch(self, sample, batch=False):
+        ims, instrs, acts, embs = sample["image"], sample["instr"], sample["action"], sample["embed"]
         # if not batch:
         #     ims=torch.stack(ims).unsqueeze(0)
         #     # instrs=torch.tensor(instrs[0],device=self.device).unsqueeze(0)
@@ -79,13 +81,12 @@ class Rudder():
         #     ims=ims.unsqueeze(0)
         #     instrs=instrs.unsqueeze(0)
         #     acts = acts.unsqueeze(0)
-        return ims,instrs,acts,embs
-
+        return ims, instrs, acts, embs
 
     def pre_process_images(self, image):
-        if not isinstance(image, tuple) and image.ndim==3:
+        if not isinstance(image, tuple) and image.ndim == 3:
             # [7 7 3] to [3 7 7]
-            x= image.transpose(0,2).unsqueeze(0)
+            x = image.transpose(0, 2).unsqueeze(0)
             x = self.rudder_net.image_conv(x)
             return x.squeeze(2).squeeze(2).unsqueeze(0)
         all_ims = []
@@ -113,78 +114,79 @@ class Rudder():
     def create_input(self, image, instr, actions, embeds, batch):
         all_ims = torch.transpose(self.pre_process_images(image), 0, 1)
         all_instrs = torch.transpose(self.pre_process_instructions(instr), 0, 1)
-        if  isinstance(actions, tuple):
+        if isinstance(actions, tuple):
             actions = torch.stack(actions)
         else:
-            actions=actions.unsqueeze(0)
+            actions = actions.unsqueeze(0)
         if isinstance(embeds, tuple):
             embeds = torch.stack(embeds)
         else:
             embeds = embeds.unsqueeze(0)
-        embeds=embeds.unsqueeze(0)
-        one_hot = torch.nn.functional.one_hot(actions, 7).float().unsqueeze(0) #dangerous
+        embeds = embeds.unsqueeze(0)
+        one_hot = torch.nn.functional.one_hot(actions, 7).float().unsqueeze(0)  # dangerous
         # x = x.reshape(x.shape[0], -1)
         input = torch.cat([all_ims, all_instrs, one_hot, embeds], dim=-1)
         if batch:
             input = input.transpose(0, 1)
         return input
 
-    def feed_rudder(self,sample,hidden=None,batch=False):
-        ims, instrs, acts,embeds = self.preprocess_batch(sample,batch)
-        input=self.create_input(ims, instrs, acts,embeds,False)
-        pred,hidden = self.rudder_net.forward(input,hidden)
-        return pred,hidden
+    def feed_rudder(self, sample, hidden=None, batch=False):
+        ims, instrs, acts, embeds = self.preprocess_batch(sample, batch)
+        input = self.create_input(ims, instrs, acts, embeds, False)
+        pred, hidden = self.rudder_net.forward(input, hidden)
+        return pred, hidden
 
-    def inference_rudder(self,sample):
+    def inference_rudder(self, sample):
         with torch.no_grad():
             rews = sample["reward"]
             rews = torch.tensor(rews, device=self.device).unsqueeze(0)
-            pred,hidden = self.feed_rudder(sample)
+            pred, hidden = self.feed_rudder(sample)
             loss, _ = self.lossfunction(pred, rews)
 
             loss = loss.clone().detach()
             pred = pred.clone().detach()
             # self.optimizer.zero_grad()
             torch.cuda.empty_cache()
-            return pred,loss
+            return pred, loss
 
-    def train_rudder(self,sample):
+    def train_rudder(self, sample):
         self.optimizer.zero_grad()
         rews = sample["reward"]
         rews = torch.tensor(rews, device=self.device).unsqueeze(0)
-        pred,hidden=self.feed_rudder(sample)
+        pred, hidden = self.feed_rudder(sample)
         del hidden
         torch.cuda.empty_cache()
         loss, tup = self.lossfunction(pred, rews)
         loss.backward()
         self.optimizer.step()
         # print("loss", loss.item())
-        loss=loss.detach().clone()
+        loss = loss.detach().clone()
         del pred
-        return loss,tup[0]
+        return loss, tup[0]
+
     def different_returns(self):
-        s=self.replayBuffer.get_return_set()
-        if len(s)>1:
+        s = self.replayBuffer.get_return_set()
+        if len(s) > 1:
             return True
         return False
 
     def buffer_full(self):
-        return self.replayBuffer.buffersize>=self.replayBuffer.max_buffersize
+        return self.replayBuffer.buffersize >= self.replayBuffer.max_buffersize
 
-    def predict_reward(self,proc_data):
+    def predict_reward(self, proc_data):
         rews = []
-        #input dict with [process nr and image, instr etc
+        # input dict with [process nr and image, instr etc
         for proc_id in range(self.nr_procs):
-            sample=dict()
+            sample = dict()
             for key, value in proc_data.items():
-                if key=="timestep":
+                if key == "timestep":
                     sample[key] = value
                 else:
-                    sample[key]=value[proc_id]
+                    sample[key] = value[proc_id]
             with torch.no_grad():
                 pred, hidden = self.feed_rudder(sample, self.last_hidden[proc_id])
-                if sample["done"]==True:
-                    self.last_hidden[proc_id]=None
+                if sample["done"] == True:
+                    self.last_hidden[proc_id] = None
                 else:
                     self.last_hidden[proc_id] = hidden
                 try:
@@ -259,37 +261,37 @@ class Rudder():
 
             self.preReplayBuffer.send_to_rudder = []
 
-    def add_data(self,sample:dict,training_running):
+    def add_data(self, sample, training_running):
         # processes_data=dict()
         for process_id in range(self.nr_procs):
             # tmp = self.preReplayBuffer.replay_buffer_dict[process_id]
             # if tmp["reward"] and tmp["reward"][0] > 0:
             #     print("shits go down")
-            timesteps=self.preReplayBuffer.add_timestep_data(sample,process_id)
+            # sample["embed"]=torch.rand_like(sample["embed"])
+            # shape= sample["embed"].shape
+            # del sample["embed"]
+            # sample["embed"] = torch.zeros(shape)
+            timesteps = self.preReplayBuffer.add_timestep_data(sample, process_id)
             # processes_data[process_id]=timesteps
             if not training_running:
                 self.add_full_episodes_to_replay_buffer()
 
-        return #processes_data
+        return  # processes_data
 
     def lossfunction(self, predictions, rewards):
         # from https://github.com/widmi/rudder-a-practical-tutorial/blob/master/tutorial.ipynb
         returns = rewards.sum(dim=1)
         predictions = predictions.squeeze(2)
         # Main task: predicting return at last timestep
-        diff=predictions[:, -1] - returns
+        diff = predictions[:, -1] - returns
         main_loss = torch.mean(diff) ** 2
         # Auxiliary task: predicting final return at every timestep ([..., None] is for correct broadcasting)
         aux_loss = torch.mean(predictions[:, :] - returns[..., None]) ** 2
         # Combine losses
         loss = main_loss + aux_loss * 0.5
         with torch.no_grad():
-            quality=1-(torch.abs(diff)/self.reward_scale) *(1/(1-self.quality_threshold))
+            quality = 1 - (torch.abs(diff) / self.reward_scale) * (1 / (1 - self.quality_threshold))
             # print("quality",quality)
-            main_loss=main_loss.clone().detach()
-            aux_loss=aux_loss.clone().detach()
-        return loss, (quality,main_loss, aux_loss)
-
-
-
-
+            main_loss = main_loss.clone().detach()
+            aux_loss = aux_loss.clone().detach()
+        return loss, (quality, main_loss, aux_loss)

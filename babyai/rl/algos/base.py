@@ -319,7 +319,13 @@ class BaseAlgo(ABC):
         def do_my_stuff2(action,image,instr,reward,done,embed,i):
             # iterate over every process
             dic=create_input_dict(action,image,instr,reward,done,embed,i)
-            dic["embed"] =torch.rand_like(dic["embed"])
+            myopi=dic["embed"].detach()
+            shapi=dic["embed"].shape
+            del dic["embed"]
+
+            dic["embed"] =myopi
+            del myopi
+            # dic["embed"] =torch.rand(shapi,device=self.device) # still leak
             proc_data=self.rudder.add_data(dic,self.process_running)
             # del proc_data
 
@@ -342,7 +348,7 @@ class BaseAlgo(ABC):
                 memory = model_results['memory']
                 extra_predictions = model_results['extra_predictions']
 
-            embed = model_results["embed"].detach().clone()
+            # embed = model_results["embed"]#.detach().clone()
             # embeddings.append(embed.detach().clone())
 
             action = dist.sample()
@@ -389,11 +395,14 @@ class BaseAlgo(ABC):
 
 
             ###### MYSTUFF ########
-            myrews=self.rewards[i].detach().clone()
-            myIms=preprocessed_obs.image.detach().clone()
-            myINstrs=preprocessed_obs.instr.detach().clone()
-            myActs=action.detach().clone()
-            embed=torch.rand_like(embed)
+            myrews=torch.tensor(self.rewards[i].detach(),device=self.device)#.clone()
+            myIms=torch.tensor(preprocessed_obs.image.detach(),device=self.device)#.clone()
+            myINstrs=torch.tensor(preprocessed_obs.instr.detach(),device=self.device)#.clone()
+            myActs=torch.tensor(action.detach(),device=self.device)#.clone()
+            # embed=torch.rand_like(embed)
+            embed=torch.tensor(model_results["embed"].detach(),device=self.device)
+            del model_results["embed"]
+            #.clone()
             # do_my_stuff2(action, preprocessed_obs.image,preprocessed_obs.instr, self.rewards[i], done,embed,i)
             do_my_stuff2(myActs, myIms, myINstrs, myrews, done, embed, i)
             # print("after my stuff",i)
