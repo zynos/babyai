@@ -251,7 +251,7 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
         x = self.critic(embedding)
         value = x.squeeze(1)
 
-        return {'dist': dist, 'value': value, 'memory': memory, 'extra_predictions': extra_predictions}
+        return {'dist': dist, 'value': value, 'memory': memory, 'extra_predictions': extra_predictions,"embedding":embedding}
 
     def _get_instr_embedding(self, instr):
         if self.lang_model == 'gru':

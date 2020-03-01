@@ -5,6 +5,8 @@ import numpy
 from babyai.rl.format import default_preprocess_obss
 from babyai.rl.utils import DictList, ParallelEnv
 from babyai.rl.utils.supervised_losses import ExtraInfoCollector
+from myScripts.ReplayBuffer import ReplayBuffer
+from myScripts.Rudder import Rudder
 
 
 class BaseAlgo(ABC):
@@ -107,6 +109,8 @@ class BaseAlgo(ABC):
         self.log_reshaped_return = [0] * self.num_procs
         self.log_num_frames = [0] * self.num_procs
 
+        #RUDDER changes
+        self.rudder=Rudder(acmodel.memory_dim,self.num_procs)
     def collect_experiences(self):
         """Collects rollouts and computes advantages.
 
@@ -138,6 +142,7 @@ class BaseAlgo(ABC):
                 value = model_results['value']
                 memory = model_results['memory']
                 extra_predictions = model_results['extra_predictions']
+                embedding=model_results['embedding']
 
             action = dist.sample()
 
@@ -165,6 +170,13 @@ class BaseAlgo(ABC):
                 ], device=self.device)
             else:
                 self.rewards[i] = torch.tensor(reward, device=self.device)
+
+            #RUDDER entry
+            #embeddings,actions,rewards,dones,instructions,images
+
+            self.rudder.add_timestep_data(embedding,action,self.rewards[i],done,preprocessed_obs.instr,preprocessed_obs.image)
+
+
             self.log_probs[i] = dist.log_prob(action)
 
             if self.aux_info:
