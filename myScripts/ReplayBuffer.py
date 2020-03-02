@@ -18,6 +18,12 @@ class ProcessData():
         self.images.append(image)
         self.instructions.append(instruction)
 
+    def get_timestep_data(self,timestep):
+
+        return {key:value[timestep] for key, value in self.__dict__.items()
+                if not key.startswith('__') and not callable(key)}
+
+
     def self_destroy(self):
         del self.actions
         torch.cuda.empty_cache()
@@ -40,6 +46,8 @@ class ReplayBuffer:
         self.added_episodes=0
         self.proc_data_buffer= [ProcessData() for _ in range(self.nr_procs)]
         self.complete_episodes=[None]*self.nr_procs
+    def buffer_full(self):
+        return self.added_episodes==self.max_size
 
     def detach_and_clone(self,*args):
         res=[]

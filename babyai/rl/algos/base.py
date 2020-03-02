@@ -110,7 +110,9 @@ class BaseAlgo(ABC):
         self.log_num_frames = [0] * self.num_procs
 
         #RUDDER changes
-        self.rudder=Rudder(acmodel.memory_dim,self.num_procs)
+        self.rudder=Rudder(acmodel.memory_dim,self.num_procs,acmodel.obs_space,
+                           acmodel.instr_dim,acmodel.memory_dim,acmodel.image_dim,
+                           acmodel.action_space,self.device)
     def collect_experiences(self):
         """Collects rollouts and computes advantages.
 
