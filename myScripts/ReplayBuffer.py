@@ -93,6 +93,7 @@ class ReplayBuffer:
         lowest_rank, low_index = self.get_lowest_ranking_and_idx(combined_ranks)
         # if lowest ranked episode is lower than the new episode add it to buffer
         if lowest_rank < new_episode_rank:
+            print("replace with",lowest_rank,new_episode_rank)
             self.replay_buffer[lowest_rank] = episode
         else:
             del episode

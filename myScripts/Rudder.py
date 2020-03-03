@@ -48,6 +48,7 @@ class Rudder:
 
         loss = loss.detach().item()
         returnn = returns.item()
+
         return loss, returnn
 
 
@@ -73,7 +74,7 @@ class Rudder:
             if not self.replay_buffer.buffer_full():
                 self.replay_buffer.replay_buffer[self.replay_buffer.added_episodes] = ce
                 self.replay_buffer.added_episodes += 1
-                # print("added ",self.added_episodes)
+                print("added ",self.replay_buffer.added_episodes)
             else:
                 self.add_to_buffer_or_discard(ce)
 
@@ -86,10 +87,12 @@ class Rudder:
             loss, returnn = self.train_one_episode(episode)
             episode.loss = loss
             episode.returnn = returnn
-            print('info')
+            print("loss",loss)
 
     def add_timestep_data(self, *args):
         complete_episodes = self.replay_buffer.add_timestep_data(*args)
-
-        if self.replay_buffer.buffer_full() and not self.first_training_done:
-            self.train_full_buffer()
+        self.consider_adding_complete_episodes_to_buffer(complete_episodes)
+        if self.replay_buffer.buffer_full():
+            if not self.first_training_done:
+                self.train_full_buffer()
+                self.first_training_done=True
