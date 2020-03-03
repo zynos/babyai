@@ -2,7 +2,7 @@ import torch
 from myScripts.MyNet import Net
 from myScripts.ReplayBuffer import ReplayBuffer, ProcessData
 import numpy as np
-
+#test
 class Rudder:
     def __init__(self, mem_dim, nr_procs, obs_space, instr_dim, ac_embed_dim, image_dim, action_space, device):
         self.replay_buffer = ReplayBuffer(nr_procs)
