@@ -12,7 +12,7 @@ class Net(nn.Module):
         self.rudder_lstm_out=128
         self.word_embedding = nn.Embedding(obs_space["instr"], self.instr_dim)
 
-
+        self.linear_out=nn.Linear(self.rudder_lstm_out,1)
         self.instr_rnn = nn.GRU(
             self.instr_dim, self.instr_dim,
             batch_first=True,
@@ -37,7 +37,7 @@ class Net(nn.Module):
         embedding=dic["embeddings"].unsqueeze(0).unsqueeze(0)
         return image,instruction,action,embedding
 
-    def forward(self, dic):
+    def forward(self, dic,hidden):
         image, instruction, action, embedding=self.extract_dict_values(dic)
 
         image=self.image_conv(image).squeeze(2).squeeze(2).unsqueeze(0)
@@ -45,7 +45,7 @@ class Net(nn.Module):
         action=torch.nn.functional.one_hot(action, num_classes=self.action_space).float().unsqueeze(0)
         x=torch.cat([image,instruction,action,embedding],dim=-1)
 
-        x,hidden=self.lstm(x)
-
+        x,hidden=self.lstm(x,hidden)
+        x=self.linear_out(x.squeeze(1))
 
         return x,hidden
