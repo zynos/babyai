@@ -114,6 +114,7 @@ class ReplayBuffer:
             self.added_new_episode=True
             self.big_counter+=1
             print("big counter",self.big_counter)
+            #this might counter leak
             if self.big_counter>=200:
                 self.added_episodes=0
                 self.replay_buffer = None
