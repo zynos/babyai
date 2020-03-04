@@ -42,10 +42,21 @@ class Rudder:
         predictions = torch.cat(predictions, dim=1)
         return predictions
 
+    def feed_network_MOCK(self, episode: ProcessData):
+        loss = np.random.uniform(0, 1)
+        r = np.random.uniform(-20, 20)
+        if r < 0:
+            r = 0
+        returns = r
+        quality = 0.1
+
+        return loss, returns, quality
+
     def feed_network(self, episode: ProcessData):
         predictions = self.predict_every_timestep(episode)
         returns = torch.sum(torch.tensor(episode.rewards, device=self.device), dim=-1)
         loss,quality = self.lossfunction(predictions, returns)
+
         return loss, returns,quality
 
     def train_one_episode(self, episode: ProcessData):
@@ -61,13 +72,20 @@ class Rudder:
         return loss, returnn,quality
 
 
-
     def add_to_buffer_or_discard(self, new_episode):
         # get loss and return of this episode
         with torch.no_grad():
             loss, returnn,quality = self.feed_network(new_episode)
             new_episode.loss = loss.detach().item()
             new_episode.returnn = returnn.detach().item()
+        self.replay_buffer.try_to_replace_old_episode(new_episode)
+
+    def add_to_buffer_or_discard_MOCK(self, new_episode):
+        # get loss and return of this episode
+        with torch.no_grad():
+            loss, returnn,quality = self.feed_network(new_episode)
+            new_episode.loss = loss
+            new_episode.returnn = returnn
         self.replay_buffer.try_to_replace_old_episode(new_episode)
 
 
@@ -95,6 +113,15 @@ class Rudder:
 
         # del complete_episodes
 
+    def train_and_set_metrics_MOCK(self,episode):
+        episode.loss=np.random.uniform(0,1)
+        r=np.random.uniform(-20, 20)
+        if r<0:
+            r=0
+        episode.returnn = r
+        quality=0.1
+        return quality
+
     def train_and_set_metrics(self, episode):
         loss, returnn, quality = self.train_one_episode(episode)
         episode.loss = loss
@@ -103,6 +130,7 @@ class Rudder:
         return quality > 0
 
     def train_full_buffer(self):
+        print("train_full_buffer")
         qualities=set()
         for epoch in range(5):
             episodes = self.replay_buffer.sample_episodes()
@@ -114,6 +142,16 @@ class Rudder:
             self.train_full_buffer()
 
     def add_timestep_data(self, *args):
+        complete_episodes = self.replay_buffer.add_timestep_data(*args)
+        for ce in complete_episodes:
+            self.train_and_set_metrics(ce)
+            self.replay_buffer.replay_buffer[self.replay_buffer.added_episodes]=ce
+            self.replay_buffer.added_episodes += 1
+            if self.replay_buffer.added_episodes==self.replay_buffer.max_size:
+                self.replay_buffer.added_episodes=60
+        # self.consider_adding_complete_episodes_to_buffer(complete_episodes)
+
+    def add_timestep_data_MOCK(self, *args):
         complete_episodes = self.replay_buffer.add_timestep_data(*args)
         self.consider_adding_complete_episodes_to_buffer(complete_episodes)
 

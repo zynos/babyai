@@ -2,6 +2,7 @@ import torch
 from scipy.stats import rankdata
 import numpy as np
 from torch.distributions import Categorical
+from copy import deepcopy
 
 
 class ProcessData():
@@ -39,10 +40,13 @@ class ProcessData():
         torch.cuda.empty_cache()
         del self.instructions
         torch.cuda.empty_cache()
-        del self.loss
-        torch.cuda.empty_cache()
-        del self.returnn
-        torch.cuda.empty_cache()
+        try:
+            del self.loss
+            torch.cuda.empty_cache()
+            del self.returnn
+            torch.cuda.empty_cache()
+        except:
+            pass
 
 
 class ReplayBuffer:
@@ -102,23 +106,23 @@ class ReplayBuffer:
         lowest_rank, low_index = self.get_lowest_ranking_and_idx(combined_ranks)
         # if lowest ranked episode is lower than the new episode add it to buffer
         if lowest_rank < new_episode_rank:
-            dummy_episode=ProcessData()
-            dummy_episode.loss=episode.loss
-            dummy_episode.returnn = episode.returnn
-            dummy_episode.embeddings=episode.embeddings
-            episode.self_destroy()
-            del episode
+            # dummy_episode=ProcessData()
+            # dummy_episode.loss=episode.loss
+            # dummy_episode.returnn = episode.returnn
+            # dummy_episode.embeddings=episode.embeddings
+            # episode.self_destroy()
+            # del episode
             # print("replace with",lowest_rank,new_episode_rank)
             # self.replay_buffer[low_index].self_destroy()
-            self.replay_buffer[low_index] = dummy_episode
+            self.replay_buffer[low_index] = episode
             self.added_new_episode=True
-            self.big_counter+=1
-            print("big counter",self.big_counter)
-            #this might counter leak
-            if self.big_counter>=200:
-                self.added_episodes=0
-                self.replay_buffer = None
-                self.replay_buffer = [None] * self.max_size
+            # self.big_counter+=1
+            # print("big counter",self.big_counter)
+            # #this might counter leak
+            # if self.big_counter>=200:
+            #     self.added_episodes=0
+            #     self.replay_buffer = None
+            #     self.replay_buffer = [None] * self.max_size
         else:
             self.added_new_episode = True
         #     del episode
@@ -133,6 +137,8 @@ class ReplayBuffer:
             if self.proc_data_buffer[proc_id].dones[-1] == True:
                 procs_to_init.append(proc_id)
                 complete_episodes.append(self.proc_data_buffer[proc_id])
+                # self.proc_data_buffer[proc_id]=None
+                # self.proc_data_buffer[proc_id] = ProcessData()
         # print("complete episodes",len(complete_episodes))
         self.init_process_data(procs_to_init)
         # del data_list
@@ -141,7 +147,7 @@ class ReplayBuffer:
     def init_process_data(self, procs_to_init):
         for p_id in procs_to_init:
             # self.proc_data_buffer[p_id].self_destroy()
-            # self.proc_data_buffer[p_id]=None
+            self.proc_data_buffer[p_id]=None
             self.proc_data_buffer[p_id] = ProcessData()
             # print("init",p_id)
 
