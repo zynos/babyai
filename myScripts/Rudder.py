@@ -126,7 +126,7 @@ class Rudder:
         loss, returnn, quality = self.train_one_episode(episode)
         episode.loss = loss
         episode.returnn = returnn
-        print("loss", loss)
+        # print("loss", loss)
         return quality > 0
 
     def train_full_buffer(self):
@@ -145,13 +145,47 @@ class Rudder:
         complete_episodes = self.replay_buffer.add_timestep_data(*args)
         for ce in complete_episodes:
             self.train_and_set_metrics(ce)
-            self.replay_buffer.replay_buffer[self.replay_buffer.added_episodes]=ce
-            self.replay_buffer.added_episodes += 1
-            if self.replay_buffer.added_episodes==self.replay_buffer.max_size:
-                self.replay_buffer.added_episodes=60
+
+            if self.replay_buffer.buffer_full():
+                # self.try_to_replace_old_episode_proxy(ce)
+                combined_ranks = self.replay_buffer.get_ranks(ce)
+                new_episode_rank = combined_ranks[-1]
+                # we don't want to get the new sample as potential minimum so remove it
+                combined_ranks = combined_ranks[:-1]
+                lowest_rank, low_index = self.replay_buffer.get_lowest_ranking_and_idx(combined_ranks)
+                idx = np.random.randint(self.replay_buffer.max_size)
+                self.replay_buffer.replay_buffer[idx] = ce
+                if lowest_rank < new_episode_rank:
+                    self.replay_buffer.replay_buffer[low_index] = ce
+                    print("replace",lowest_rank,new_episode_rank)
+            else:
+                self.replay_buffer.replay_buffer[self.replay_buffer.added_episodes] = ce
+                self.replay_buffer.added_episodes += 1
+
+            # if self.replay_buffer.added_episodes==self.replay_buffer.max_size:
+            #     self.replay_buffer.added_episodes=60
         # self.consider_adding_complete_episodes_to_buffer(complete_episodes)
 
     def add_timestep_data_MOCK(self, *args):
         complete_episodes = self.replay_buffer.add_timestep_data(*args)
         self.consider_adding_complete_episodes_to_buffer(complete_episodes)
+
+
+    ####
+    def try_to_replace_old_episode_proxy(self, episode):
+        combined_ranks = self.replay_buffer.get_ranks(episode)
+        new_episode_rank = combined_ranks[-1]
+        # we don't want to get the new sample as potential minimum so remove it
+        combined_ranks=combined_ranks[:-1]
+        lowest_rank, low_index = self.replay_buffer.get_lowest_ranking_and_idx(combined_ranks)
+        # if lowest ranked episode is lower than the new episode add it to buffer
+        if lowest_rank < new_episode_rank:
+            self.replay_buffer.replay_buffer[low_index] = episode
+            self.added_new_episode=True
+        else:
+            self.added_new_episode = False
+
+
+        del episode
+        return
 
