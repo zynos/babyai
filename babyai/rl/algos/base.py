@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 import torch
+import multiprocessing as mp
 import numpy
 
 from babyai.rl.format import default_preprocess_obss
@@ -7,7 +8,7 @@ from babyai.rl.utils import DictList, ParallelEnv
 from babyai.rl.utils.supervised_losses import ExtraInfoCollector
 from myScripts.ReplayBuffer import ReplayBuffer
 from myScripts.Rudder import Rudder
-
+from myScripts.asyncTrain import start_background_process
 
 class BaseAlgo(ABC):
     """The base class for RL algorithms."""
@@ -113,6 +114,14 @@ class BaseAlgo(ABC):
         self.rudder=Rudder(acmodel.memory_dim,self.num_procs,acmodel.obs_space,
                            acmodel.instr_dim,acmodel.memory_dim,acmodel.image_dim,
                            acmodel.action_space,self.device)
+        # self.ctx=mp.get_context("spawn")
+        # self.queue=self.ctx.Queue()
+        # self.async_func=start_background_process
+        # self.background_process=self.ctx.Process(target=self.async_func, args=(self.rudder,self.queue,))
+        self.p=None
+        self.queue_into_rudder=None
+        self.queue_back_from_rudder=None
+
     def collect_experiences(self):
         """Collects rollouts and computes advantages.
 
@@ -134,6 +143,12 @@ class BaseAlgo(ABC):
             reward, policy loss, value loss, etc.
 
         """
+        # if not self.p.is_alive() and not self.p.exitcode:
+        #     self.rudder.net.share_memory()
+        #     self.p.start()
+        # print(self.p.exitcode)
+
+
         for i in range(self.num_frames_per_proc):
             # Do one agent-environment interaction
 
@@ -174,9 +189,29 @@ class BaseAlgo(ABC):
                 self.rewards[i] = torch.tensor(reward, device=self.device)
 
             #RUDDER entry
+            ### SYNCHRONOUS
             #embeddings,actions,rewards,dones,instructions,images
 
             self.rudder.add_timestep_data(embedding,action,self.rewards[i],done,preprocessed_obs.instr,preprocessed_obs.image)
+
+            if self.rudder.first_training_done:
+                self.rewards[i]=self.rudder.predict_reward(embedding,action,self.rewards[i],done,preprocessed_obs.instr,preprocessed_obs.image)
+                # print("rudder rewards")
+
+            ### ASYNCHRONOUS
+
+            # lis = [embedding, action, self.rewards[i], done, preprocessed_obs.instr, preprocessed_obs.image]
+            # self.queue_into_rudder.put(lis)
+            # print("qsize", self.queue_into_rudder.qsize())
+            # if not self.queue_back_from_rudder.empty():
+            #     train_done=self.queue_back_from_rudder.get()
+            #     assert isinstance(train_done,bool)
+            #     if train_done:
+            #         self.rewards[i] = self.rudder.predict_reward(embedding, action, self.rewards[i], done,
+            #                                                      preprocessed_obs.instr, preprocessed_obs.image)
+            #         # assert 0==1
+
+
 
 
             self.log_probs[i] = dist.log_prob(action)

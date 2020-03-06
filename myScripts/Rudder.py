@@ -3,6 +3,10 @@ from myScripts.MyNet import Net
 from myScripts.ReplayBuffer import ReplayBuffer, ProcessData
 import numpy as np
 #test test
+def remove_uninteresting_return_episodes(complete_episodes):
+    pass
+
+
 class Rudder:
     def __init__(self, mem_dim, nr_procs, obs_space, instr_dim, ac_embed_dim, image_dim, action_space, device):
         self.replay_buffer = ReplayBuffer(nr_procs)
@@ -12,6 +16,9 @@ class Rudder:
         self.first_training_done = False
         self.mu=20
         self.quality_threshold=0.8
+        self.last_hidden=[None] * nr_procs
+        # For the first timestep we will take (0-predictions[:, :1]) as redistributed reward
+        self.last_predicted_reward = [None] * nr_procs
 
 
     def calc_quality(self,diff):
@@ -30,6 +37,39 @@ class Rudder:
         # Combine losses
         loss = main_loss + aux_loss * 0.5
         return loss,quality
+
+    def predict_reward(self,embeddings, actions, rewards, dones, instructions, images):
+        # input={"embeddings":embeddings,"actions":actions,
+        #        "instructions":instructions,"images":images}
+        # with torch.no_grad():
+        #     pred, hidden = self.net(input, self.last_hidden,batch=True)
+        #     if self.last_predicted_reward == None:
+        #         # first timestep
+        #         pred_reward = 0 - pred
+        #     else:
+        #         pred_reward = pred - self.last_predicted_reward
+        predictions=[]
+        for proc_id,done in enumerate(dones):
+            data= {"embeddings":embeddings[proc_id],"actions":actions[proc_id],
+               "instructions":instructions[proc_id],"images":images[proc_id]}
+            with torch.no_grad():
+                hidden=self.last_hidden[proc_id]
+                pred, hidden = self.net(data, hidden)
+                if self.last_predicted_reward[proc_id]==None:
+                    #first timestep
+                    pred_reward=0-pred
+                else:
+                    pred_reward=pred-self.last_predicted_reward[proc_id]
+                if done:
+                    self.last_hidden[proc_id]=None
+                    self.last_predicted_reward[proc_id] = None
+                else:
+                    self.last_predicted_reward[proc_id]=pred
+                    self.last_hidden[proc_id]=hidden
+                predictions.append(pred_reward)
+        return torch.stack(predictions).squeeze()
+
+
 
     def predict_every_timestep(self, episode: ProcessData):
         hidden = None
@@ -58,6 +98,16 @@ class Rudder:
         loss,quality = self.lossfunction(predictions, returns)
 
         return loss, returns,quality
+
+    def inference_and_set_metrics(self, episode: ProcessData):
+        with torch.no_grad():
+            loss, returns,quality = self.feed_network(episode)
+            loss = loss.detach().item()
+            returnn = returns.detach().item()
+            episode.loss=loss
+            episode.returnn=returnn
+
+            return quality
 
     def train_one_episode(self, episode: ProcessData):
         loss, returns,quality = self.feed_network(episode)
@@ -141,34 +191,47 @@ class Rudder:
         if False in qualities:
             self.train_full_buffer()
 
+    def remove_uninteresting_return_episodes(self,complete_episodes):
+        return [e for e in complete_episodes if e.rewards[-1] not in set(self.replay_buffer.get_returns())]
+
     def add_timestep_data(self, *args):
         complete_episodes = self.replay_buffer.add_timestep_data(*args)
+        replaced=False
+        if self.replay_buffer.buffer_full():
+            complete_episodes=remove_uninteresting_return_episodes(complete_episodes)
         for ce in complete_episodes:
-            self.train_and_set_metrics(ce)
 
             if self.replay_buffer.buffer_full():
+
+                self.inference_and_set_metrics(ce)
                 # self.try_to_replace_old_episode_proxy(ce)
                 combined_ranks = self.replay_buffer.get_ranks(ce)
                 new_episode_rank = combined_ranks[-1]
                 # we don't want to get the new sample as potential minimum so remove it
                 combined_ranks = combined_ranks[:-1]
                 lowest_rank, low_index = self.replay_buffer.get_lowest_ranking_and_idx(combined_ranks)
-                idx = np.random.randint(self.replay_buffer.max_size)
-                self.replay_buffer.replay_buffer[idx] = ce
+                # idx = np.random.randint(self.replay_buffer.max_size)
+                # self.replay_buffer.replay_buffer[idx] = ce
                 if lowest_rank < new_episode_rank:
                     self.replay_buffer.replay_buffer[low_index] = ce
-                    print("replace",lowest_rank,new_episode_rank)
+                    # print("replace",lowest_rank,new_episode_rank)
+                    replaced=True
+
             else:
+                self.train_and_set_metrics(ce)
                 self.replay_buffer.replay_buffer[self.replay_buffer.added_episodes] = ce
                 self.replay_buffer.added_episodes += 1
-
+        if replaced and self.replay_buffer.encountered_different_returns():
+            self.train_full_buffer()
+            print("training finally done")
+            self.first_training_done = True
             # if self.replay_buffer.added_episodes==self.replay_buffer.max_size:
             #     self.replay_buffer.added_episodes=60
         # self.consider_adding_complete_episodes_to_buffer(complete_episodes)
 
-    def add_timestep_data_MOCK(self, *args):
-        complete_episodes = self.replay_buffer.add_timestep_data(*args)
-        self.consider_adding_complete_episodes_to_buffer(complete_episodes)
+    # def add_timestep_data_MOCK(self, *args):
+    #     complete_episodes = self.replay_buffer.add_timestep_data(*args)
+    #     self.consider_adding_complete_episodes_to_buffer(complete_episodes)
 
 
     ####

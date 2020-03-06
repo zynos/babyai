@@ -82,9 +82,16 @@ class ReplayBuffer:
         combined_ranks = ranked_ret_deviations + ranked_losses
         return combined_ranks
 
+    def encountered_different_returns(self):
+        ret_set=set(self.get_returns())
+        return len(ret_set)>1
+
+    def get_returns(self):
+        return [r.returnn for r in self.replay_buffer]
+
     def get_losses_and_returns(self):
         losses = [l.loss for l in self.replay_buffer]
-        returns = [r.returnn for r in self.replay_buffer]
+        returns = self.get_returns()
         return losses,returns
 
     def get_ranks(self,new_episode:ProcessData):
@@ -156,6 +163,8 @@ class ReplayBuffer:
         complete_episodes = self.add_data_to_process_buffer(result)
         # del result
         return complete_episodes
+
+
 
     def sample_episodes(self):
         losses,retruns=self.get_losses_and_returns()
