@@ -25,7 +25,9 @@ class ProcessData():
 
     def get_timestep_data(self, timestep):
         return {key: value[timestep] for key, value in self.__dict__.items()
-                if not key.startswith('__') and not callable(key) and isinstance(value, list)}
+                if not key.startswith('__') and not callable(key)}
+        # return {key: value[timestep] for key, value in self.__dict__.items()
+        #         if not key.startswith('__') and not callable(key) and isinstance(value, list)}
 
     def self_destroy(self):
         del self.actions
@@ -61,9 +63,10 @@ class ReplayBuffer:
         self.big_counter=0
 
         self.embeddings=torch.zeros((self.max_size,self.max_steps,embed_dim)).to(device)
-        self.images = torch.zeros((self.max_size, self.max_steps, 7,7,3))
-        self.instructions = torch.zeros((self.max_size, self.max_steps, 9))
-        self.rewards = torch.zeros((self.max_size, self.max_steps))
+        self.images = torch.zeros((self.max_size, self.max_steps, 7,7,3)).to(device)
+        self.instructions = torch.zeros((self.max_size, self.max_steps, 9),dtype=torch.int64).to(device)
+        self.rewards = torch.zeros((self.max_size, self.max_steps)).to(device)
+        self.actions = torch.zeros((self.max_size, self.max_steps),dtype=torch.int64).to(device)
         self.dones = np.zeros((self.max_size,self.max_steps),dtype=bool)
 
         self.fast_returns=np.zeros(self.max_size)
@@ -98,12 +101,12 @@ class ReplayBuffer:
         return len(ret_set)>1
 
     def get_returns(self):
-        return self.fast_returns
+        return list(self.fast_returns)
         # return [r.returnn for r in self.replay_buffer]
 
     def get_losses(self):
-        return self.fast_losses
-        return [[l.loss for l in self.replay_buffer]]
+        return list(self.fast_losses)
+        # return [[l.loss for l in self.replay_buffer]]
 
     def get_losses_and_returns(self):
         losses = self.get_losses()
@@ -180,7 +183,15 @@ class ReplayBuffer:
         # del result
         return complete_episodes
 
-
+    def get_episode_from_tensors(self,id):
+        episode=ProcessData()
+        episode.rewards=self.rewards[id]
+        episode.actions = self.actions[id]
+        episode.embeddings = self.embeddings[id]
+        episode.dones = self.dones[id]
+        episode.images = self.images[id]
+        episode.instructions = self.instructions[id]
+        return episode
 
     def sample_episodes(self):
         losses,retruns=self.get_losses_and_returns()
@@ -190,6 +201,7 @@ class ReplayBuffer:
         episodes=[]
         for _ in range(self.sample_amount):
             episode_id = m.sample()
-            episodes.append(self.replay_buffer[episode_id])
+            episode=self.get_episode_from_tensors(episode_id)
+            episodes.append(episode)
         return episodes
 

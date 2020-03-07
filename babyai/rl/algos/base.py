@@ -194,8 +194,8 @@ class BaseAlgo(ABC):
 
             self.rudder.add_timestep_data(embedding,action,self.rewards[i],done,preprocessed_obs.instr,preprocessed_obs.image)
             #
-            # if self.rudder.first_training_done:
-            #     self.rewards[i]=self.rudder.predict_reward(embedding,action,self.rewards[i],done,preprocessed_obs.instr,preprocessed_obs.image)
+            if self.rudder.first_training_done:
+                self.rewards[i]=self.rudder.predict_reward(embedding,action,self.rewards[i],done,preprocessed_obs.instr,preprocessed_obs.image)
                 # print("rudder rewards")
 
             ### ASYNCHRONOUS
