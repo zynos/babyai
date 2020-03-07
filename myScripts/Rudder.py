@@ -67,7 +67,7 @@ class Rudder:
             predictions.append(pred)
             if done:
                 break
-        assert done == True
+        # assert done == True
         predictions = torch.cat(predictions, dim=1)
         return predictions
 
@@ -111,7 +111,7 @@ class Rudder:
         quality=0.1
         return quality
 
-    def train_and_set_metrics(self, episode):
+    def train_and_set_metrics(self, episode,episode_id):
         # loss, returnn, quality = self.train_one_episode(episode)
         loss, returns, quality = self.feed_network(episode)
 
@@ -124,18 +124,23 @@ class Rudder:
         # print("Loss",loss)
         episode.loss = loss
         episode.returnn = returnn
+        self.replay_buffer.fast_losses[episode_id]=loss
         # print("loss", loss)
         return quality > 0
 
     def train_full_buffer(self):
-        print("train_full_buffer")
+        # print("train_full_buffer")
         qualities=set()
         for epoch in range(5):
-            episodes = self.replay_buffer.sample_episodes()
-            for episode in episodes:
-                quality=self.train_and_set_metrics(episode)
+            episodes,episodes_ids = self.replay_buffer.sample_episodes()
+            # episodes = self.replay_buffer.sample_episodes()
+            for i,episode in enumerate(episodes):
+                quality=self.train_and_set_metrics(episode,episodes_ids[i])
+                # quality=self.train_and_set_metrics(episode)
+
+                # assert episode.returnn==self.replay_buffer.fast_returns[episodes_ids[i]]
                 qualities.add(quality)
-        print("last sample loss",episode.loss)
+        print("sample {} loss {:.6f}".format(episodes_ids[-1],episode.loss))
         if False in qualities:
             self.train_full_buffer()
 
@@ -177,20 +182,23 @@ class Rudder:
 
     def new_add_to_replay_buffer(self,complete_episodes):
         replaced=False
+        replaced_ids=set()
         for ce in complete_episodes:
             self.inference_and_set_metrics(ce)
             if self.replay_buffer.buffer_full():
                 idx=self.new_get_replacement_index(ce)
-                if idx!=-1:
-                    self.new_replace_episode_data(idx,ce)
-                    replaced=True
-
             else:
                 idx=self.replay_buffer.added_episodes
-                self.new_replace_episode_data(idx,ce)
                 self.replay_buffer.added_episodes+=1
+                # assert idx!=self.replay_buffer
+            if idx != -1:
+                self.new_replace_episode_data(idx, ce)
+                replaced = True
+                replaced_ids.add(idx)
         if replaced and self.replay_buffer.buffer_full():
             self.train_full_buffer()
+            # self.first_training_done=True
+            print("replaced",replaced_ids)
 
 
 

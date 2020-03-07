@@ -157,23 +157,32 @@ class ReplayBuffer:
 
     def get_episode_from_tensors(self,id):
         episode=ProcessData()
-        episode.rewards=self.rewards[id]
-        episode.actions = self.actions[id]
-        episode.embeddings = self.embeddings[id]
-        episode.dones = self.dones[id]
-        episode.images = self.images[id]
-        episode.instructions = self.instructions[id]
+        max_idx=np.where(self.dones[id]==True)[0][0]
+         # we want to include last element
+        max_idx = max_idx +1
+        episode.dones = self.dones[id][:max_idx]
+        # assert len(np.where(episode.dones==True))==1
+        episode.rewards=self.rewards[id][:max_idx]
+        episode.actions = self.actions[id][:max_idx]
+        episode.embeddings = self.embeddings[id][:max_idx]
+        episode.images = self.images[id][:max_idx]
+        episode.instructions = self.instructions[id][:max_idx]
+        # episode.returnn=self.fast_returns[id]
         return episode
 
     def sample_episodes(self):
         losses,retruns=self.get_losses_and_returns()
         combined_ranks= self.get_combined_ranks(losses,retruns)
+        # assert len(combined_ranks)<=self.max_size
         probs=torch.nn.functional.softmax(torch.tensor(combined_ranks))
         m = Categorical(probs)
         episodes=[]
+        ids=[]
         for _ in range(self.sample_amount):
             episode_id = m.sample()
             episode=self.get_episode_from_tensors(episode_id)
+            # assert episode.returnn==self.fast_returns[episode_id]
             episodes.append(episode)
-        return episodes
+            ids.append(episode_id)
+        return episodes,ids
 
