@@ -50,7 +50,8 @@ class ProcessData():
 
 
 class ReplayBuffer:
-    def __init__(self, nr_procs):
+    def __init__(self, nr_procs,embed_dim,device):
+        self.max_steps=128
         self.sample_amount = 8
         self.nr_procs = nr_procs
         self.added_episodes = 0
@@ -58,6 +59,16 @@ class ReplayBuffer:
         self.max_size = 128
         self.replay_buffer = [None] * self.max_size
         self.big_counter=0
+
+        self.embeddings=torch.zeros((self.max_size,self.max_steps,embed_dim)).to(device)
+        self.images = torch.zeros((self.max_size, self.max_steps, 7,7,3))
+        self.instructions = torch.zeros((self.max_size, self.max_steps, 9))
+        self.rewards = torch.zeros((self.max_size, self.max_steps))
+        self.dones = np.zeros((self.max_size,self.max_steps),dtype=bool)
+
+        self.fast_returns=np.zeros(self.max_size)
+        self.fast_losses = np.zeros(self.max_size)
+
 
     def buffer_full(self):
         return self.added_episodes == self.max_size
@@ -87,10 +98,15 @@ class ReplayBuffer:
         return len(ret_set)>1
 
     def get_returns(self):
-        return [r.returnn for r in self.replay_buffer]
+        return self.fast_returns
+        # return [r.returnn for r in self.replay_buffer]
+
+    def get_losses(self):
+        return self.fast_losses
+        return [[l.loss for l in self.replay_buffer]]
 
     def get_losses_and_returns(self):
-        losses = [l.loss for l in self.replay_buffer]
+        losses = self.get_losses()
         returns = self.get_returns()
         return losses,returns
 

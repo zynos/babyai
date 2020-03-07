@@ -3,15 +3,13 @@ from myScripts.MyNet import Net
 from myScripts.ReplayBuffer import ReplayBuffer, ProcessData
 import numpy as np
 #test test
-def remove_uninteresting_return_episodes(complete_episodes):
-    pass
 
 
 class Rudder:
     def __init__(self, mem_dim, nr_procs, obs_space, instr_dim, ac_embed_dim, image_dim, action_space, device):
-        self.replay_buffer = ReplayBuffer(nr_procs)
+        self.replay_buffer = ReplayBuffer(nr_procs,ac_embed_dim,device)
         self.net = Net(image_dim, obs_space, instr_dim, ac_embed_dim, action_space).to(device)
-        self.optimizer = torch.optim.Adam(self.net.parameters(), lr=1e-4, weight_decay=1e-4)
+        self.optimizer = torch.optim.Adam(self.net.parameters(), lr=1e-5, weight_decay=1e-5)
         self.device = device
         self.first_training_done = False
         self.mu=20
@@ -118,7 +116,7 @@ class Rudder:
 
         loss = loss.detach().item()
         returnn = returns.detach().item()
-
+        # print("Loss",loss)
         return loss, returnn,quality
 
 
@@ -194,11 +192,8 @@ class Rudder:
     def remove_uninteresting_return_episodes(self,complete_episodes):
         return [e for e in complete_episodes if e.rewards[-1] not in set(self.replay_buffer.get_returns())]
 
-    def add_timestep_data(self, *args):
-        complete_episodes = self.replay_buffer.add_timestep_data(*args)
-        replaced=False
-        if self.replay_buffer.buffer_full():
-            complete_episodes=remove_uninteresting_return_episodes(complete_episodes)
+    def do_the_rest(self,complete_episodes):
+        replaced = False
         for ce in complete_episodes:
 
             if self.replay_buffer.buffer_full():
@@ -229,9 +224,42 @@ class Rudder:
             #     self.replay_buffer.added_episodes=60
         # self.consider_adding_complete_episodes_to_buffer(complete_episodes)
 
-    # def add_timestep_data_MOCK(self, *args):
-    #     complete_episodes = self.replay_buffer.add_timestep_data(*args)
-    #     self.consider_adding_complete_episodes_to_buffer(complete_episodes)
+    def new_add_episode_data(self,episode:ProcessData):
+        offset=10
+        #the first 10 will never be overwritten for debug causes only!!!
+        idx = np.random.randint(offset,self.replay_buffer.max_size)
+        stacked=torch.stack(episode.embeddings)
+        self.replay_buffer.embeddings[idx][:len(stacked)]=stacked
+        stacked = torch.stack(episode.images)
+        self.replay_buffer.images[idx][:len(stacked)] = stacked
+        stacked = torch.stack(episode.instructions)
+        self.replay_buffer.instructions[idx][:len(stacked)] = stacked
+        stacked = torch.stack(episode.rewards)
+        self.replay_buffer.fast_returns[idx] = torch.sum(stacked)
+        self.replay_buffer.rewards[idx][:len(stacked)] = stacked
+        stacked = np.array(episode.dones)
+        self.replay_buffer.dones[idx][:len(stacked)] = stacked
+
+
+
+    def new_add_to_replay_buffer(self,complete_episodes):
+        for ce in complete_episodes:
+            self.new_add_episode_data(ce)
+
+
+
+    def add_timestep_data(self, *args):
+        complete_episodes = self.replay_buffer.add_timestep_data(*args)
+
+        if self.replay_buffer.buffer_full():
+            complete_episodes=self.remove_uninteresting_return_episodes(complete_episodes)
+        self.new_add_to_replay_buffer(complete_episodes)
+        # self.do_the_rest(complete_episodes)
+
+
+    def add_timestep_data_MOCK(self, *args):
+        complete_episodes = self.replay_buffer.add_timestep_data(*args)
+        self.consider_adding_complete_episodes_to_buffer(complete_episodes)
 
 
     ####

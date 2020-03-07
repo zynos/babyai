@@ -193,16 +193,16 @@ class BaseAlgo(ABC):
             #embeddings,actions,rewards,dones,instructions,images
 
             self.rudder.add_timestep_data(embedding,action,self.rewards[i],done,preprocessed_obs.instr,preprocessed_obs.image)
-
-            if self.rudder.first_training_done:
-                self.rewards[i]=self.rudder.predict_reward(embedding,action,self.rewards[i],done,preprocessed_obs.instr,preprocessed_obs.image)
+            #
+            # if self.rudder.first_training_done:
+            #     self.rewards[i]=self.rudder.predict_reward(embedding,action,self.rewards[i],done,preprocessed_obs.instr,preprocessed_obs.image)
                 # print("rudder rewards")
 
             ### ASYNCHRONOUS
 
             # lis = [embedding, action, self.rewards[i], done, preprocessed_obs.instr, preprocessed_obs.image]
             # self.queue_into_rudder.put(lis)
-            # print("qsize", self.queue_into_rudder.qsize())
+            # # print("qsize", self.queue_into_rudder.qsize())
             # if not self.queue_back_from_rudder.empty():
             #     train_done=self.queue_back_from_rudder.get()
             #     assert isinstance(train_done,bool)
