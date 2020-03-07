@@ -59,7 +59,7 @@ class ReplayBuffer:
         self.added_episodes = 0
         self.proc_data_buffer = [ProcessData() for _ in range(self.nr_procs)]
         self.max_size = 128
-        self.replay_buffer = [None] * self.max_size
+        # self.replay_buffer = [None] * self.max_size
         self.big_counter=0
 
         self.embeddings=torch.zeros((self.max_size,self.max_steps,embed_dim)).to(device)
@@ -124,34 +124,6 @@ class ReplayBuffer:
     def get_lowest_ranking_and_idx(self, combined_ranks):
         return np.min(combined_ranks), np.argmin(combined_ranks)
 
-    def try_to_replace_old_episode(self, episode):
-        combined_ranks = self.get_ranks(episode)
-        new_episode_rank = combined_ranks[-1]
-        # we don't want to get the new sample as potential minimum so remove it
-        combined_ranks=combined_ranks[:-1]
-        lowest_rank, low_index = self.get_lowest_ranking_and_idx(combined_ranks)
-        # if lowest ranked episode is lower than the new episode add it to buffer
-        if lowest_rank < new_episode_rank:
-            # dummy_episode=ProcessData()
-            # dummy_episode.loss=episode.loss
-            # dummy_episode.returnn = episode.returnn
-            # dummy_episode.embeddings=episode.embeddings
-            # episode.self_destroy()
-            # del episode
-            # print("replace with",lowest_rank,new_episode_rank)
-            # self.replay_buffer[low_index].self_destroy()
-            self.replay_buffer[low_index] = episode
-            self.added_new_episode=True
-            # self.big_counter+=1
-            # print("big counter",self.big_counter)
-            # #this might counter leak
-            # if self.big_counter>=200:
-            #     self.added_episodes=0
-            #     self.replay_buffer = None
-            #     self.replay_buffer = [None] * self.max_size
-        else:
-            self.added_new_episode = True
-        #     del episode
 
     def add_data_to_process_buffer(self, data_list):
         # data is embeddings,actions,rewards,dones,instructions,images
