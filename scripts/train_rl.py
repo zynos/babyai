@@ -12,8 +12,9 @@ import gym
 import time
 import datetime
 import torch
-from torch import multiprocessing as mp
-torch.set_num_threads(1)
+import multiprocessing as mp
+from torch.multiprocessing import queue
+# torch.set_num_threads(1)
 from myScripts import asyncTrain
 import numpy as np
 import subprocess
@@ -25,6 +26,8 @@ from babyai.arguments import ArgumentParser
 from babyai.model import ACModel
 from babyai.evaluate import batch_evaluate
 from babyai.utils.agent import ModelAgent
+
+
 
 if __name__ == '__main__':
     # Parse arguments
@@ -111,11 +114,13 @@ if __name__ == '__main__':
                                  reshape_reward)
         ctx = mp.get_context('spawn')
         algo.ctx = ctx
-        # algo.pool = algo.ctx.Pool(1, maxtasksperchild=1)
+        # algo.queue_into_rudder = ctx.Queue()
+        # algo.queue_back_from_rudder = ctx.Queue()
         algo.queue_into_rudder = ctx.Queue()
         algo.queue_back_from_rudder = ctx.Queue()
-        algo.parallel_train_func = asyncTrain.start_background_process
-        algo.p = ctx.Process(target=algo.parallel_train_func, args=(algo.rudder, algo.queue_into_rudder,algo.queue_back_from_rudder))
+        algo.async_func = asyncTrain.start_background_process
+        # algo.pool = algo.ctx.Pool(1, maxtasksperchild=1)
+        algo.p = ctx.Process(target=algo.async_func, args=(algo.rudder, algo.queue_into_rudder,algo.queue_back_from_rudder))
     else:
         raise ValueError("Incorrect algorithm name: {}".format(args.algo))
 
@@ -188,6 +193,7 @@ if __name__ == '__main__':
 
         update_start_time = time.time()
         logs = algo.update_parameters()
+        print("after update_parameters")
         update_end_time = time.time()
 
         status['num_frames'] += logs["num_frames"]

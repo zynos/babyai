@@ -177,12 +177,12 @@ class ReplayBuffer:
         probs=torch.nn.functional.softmax(torch.tensor(combined_ranks))
         m = Categorical(probs)
         episodes=[]
-        ids=[]
+        # ids=[]
         for _ in range(self.sample_amount):
             episode_id = m.sample()
             episode=self.get_episode_from_tensors(episode_id)
             # assert episode.returnn==self.fast_returns[episode_id]
             episodes.append(episode)
-            ids.append(episode_id)
-        return episodes,ids
+            # ids.append(episode_id)
+        return episodes#,ids
 

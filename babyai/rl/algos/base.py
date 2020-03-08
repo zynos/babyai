@@ -9,6 +9,7 @@ from babyai.rl.utils.supervised_losses import ExtraInfoCollector
 from myScripts.ReplayBuffer import ReplayBuffer
 from myScripts.Rudder import Rudder
 from myScripts.asyncTrain import start_background_process
+from myScripts.asyncTrain import my_callback
 
 class BaseAlgo(ABC):
     """The base class for RL algorithms."""
@@ -75,7 +76,6 @@ class BaseAlgo(ABC):
         self.num_procs = len(envs)
         self.num_frames = self.num_frames_per_proc * self.num_procs
 
-
         assert self.num_frames_per_proc % self.recurrence == 0
 
         # Initialize experience values
@@ -83,7 +83,7 @@ class BaseAlgo(ABC):
         shape = (self.num_frames_per_proc, self.num_procs)
 
         self.obs = self.env.reset()
-        self.obss = [None]*(shape[0])
+        self.obss = [None] * (shape[0])
 
         self.memory = torch.zeros(shape[1], self.acmodel.memory_size, device=self.device)
         self.memories = torch.zeros(*shape, self.acmodel.memory_size, device=self.device)
@@ -110,19 +110,27 @@ class BaseAlgo(ABC):
         self.log_reshaped_return = [0] * self.num_procs
         self.log_num_frames = [0] * self.num_procs
 
-        #RUDDER changes
-        self.rudder=Rudder(acmodel.memory_dim,self.num_procs,acmodel.obs_space,
-                           acmodel.instr_dim,acmodel.memory_dim,acmodel.image_dim,
-                           acmodel.action_space,self.device)
+        # RUDDER changes
+        self.rudder = Rudder(acmodel.memory_dim, self.num_procs, acmodel.obs_space,
+                             acmodel.instr_dim, acmodel.memory_dim, acmodel.image_dim,
+                             acmodel.action_space, self.device)
         # self.ctx=mp.get_context("spawn")
         # self.queue=self.ctx.Queue()
-        # self.async_func=start_background_process
+        self.async_func=None
+        self.async_result=None
         # self.background_process=self.ctx.Process(target=self.async_func, args=(self.rudder,self.queue,))
-        self.p=None
-        self.queue_into_rudder=None
-        self.queue_back_from_rudder=None
+        self.p = None
+        self.queue_into_rudder = None
+        self.queue_back_from_rudder = None
+        self.pool = None
+
+    def check_if_training_done(self):
+        with open(self.rudder.communication_file_path, "r") as file:
+            state = file.read()
+            return state == "done"
 
     def collect_experiences(self):
+
         """Collects rollouts and computes advantages.
 
         Runs several environments concurrently. The next actions are computed
@@ -143,12 +151,11 @@ class BaseAlgo(ABC):
             reward, policy loss, value loss, etc.
 
         """
-        # if not self.p.is_alive() and not self.p.exitcode:
-        #     self.rudder.net.share_memory()
-        #     self.p.start()
-        # print(self.p.exitcode)
-
-
+        if not self.p.is_alive() and not self.p.exitcode:
+            self.rudder.net.share_memory()
+            self.p.start()
+        print(self.p.exitcode)
+        # self.rudder.net.share_memory()
         for i in range(self.num_frames_per_proc):
             # Do one agent-environment interaction
 
@@ -159,7 +166,7 @@ class BaseAlgo(ABC):
                 value = model_results['value']
                 memory = model_results['memory']
                 extra_predictions = model_results['extra_predictions']
-                embedding=model_results['embedding']
+                embedding = model_results['embedding']
 
             action = dist.sample()
 
@@ -188,14 +195,37 @@ class BaseAlgo(ABC):
             else:
                 self.rewards[i] = torch.tensor(reward, device=self.device)
 
-            #RUDDER entry
+            # RUDDER entry
             ### SYNCHRONOUS
-            #embeddings,actions,rewards,dones,instructions,images
+            # embeddings,actions,rewards,dones,instructions,images
+            try:
 
-            self.rudder.add_timestep_data(embedding,action,self.rewards[i],done,preprocessed_obs.instr,preprocessed_obs.image)
-            #
-            if self.rudder.first_training_done:
-                self.rewards[i]=self.rudder.predict_reward(embedding,action,self.rewards[i],done,preprocessed_obs.instr,preprocessed_obs.image)
+                self.rudder.add_timestep_data(embedding, action, self.rewards[i], done, preprocessed_obs.instr,
+                                              preprocessed_obs.image)
+                #
+                if self.async_result:
+                    print("async ready",self.async_result.ready())
+                # if self.async_result and self.async_result.ready() and self.check_if_training_done():
+                if not self.queue_back_from_rudder.empty():
+                    res=self.queue_back_from_rudder.get()
+                    if res:
+                        self.rudder.parallel_train_running = False
+                        self.rudder.parallel_train_done = True
+                        self.rudder.first_training_done = True
+                if self.rudder.replay_buffer.buffer_full() and not self.rudder.parallel_train_running:
+                    self.rudder.parallel_train_running = True
+                    print("want to start training in para")
+                    # with open(self.rudder.communication_file_path, "w") as file:
+                    #     file.write("training")
+                    # self.async_result=self.pool.apply_async(self.async_func,(self.rudder,self.rudder.replay_buffer,),callback=my_callback)
+                    print("got ret val",self.async_result)
+                    self.queue_into_rudder.put(self.rudder.replay_buffer)
+
+                if self.rudder.first_training_done:
+                    self.rewards[i] = self.rudder.predict_reward(embedding, action, self.rewards[i], done,
+                                                                 preprocessed_obs.instr, preprocessed_obs.image)
+            except:
+                pass
                 # print("rudder rewards")
 
             ### ASYNCHRONOUS
@@ -210,9 +240,6 @@ class BaseAlgo(ABC):
             #         self.rewards[i] = self.rudder.predict_reward(embedding, action, self.rewards[i], done,
             #                                                      preprocessed_obs.instr, preprocessed_obs.image)
             #         # assert 0==1
-
-
-
 
             self.log_probs[i] = dist.log_prob(action)
 
@@ -243,9 +270,9 @@ class BaseAlgo(ABC):
             next_value = self.acmodel(preprocessed_obs, self.memory * self.mask.unsqueeze(1))['value']
 
         for i in reversed(range(self.num_frames_per_proc)):
-            next_mask = self.masks[i+1] if i < self.num_frames_per_proc - 1 else self.mask
-            next_value = self.values[i+1] if i < self.num_frames_per_proc - 1 else next_value
-            next_advantage = self.advantages[i+1] if i < self.num_frames_per_proc - 1 else 0
+            next_mask = self.masks[i + 1] if i < self.num_frames_per_proc - 1 else self.mask
+            next_value = self.values[i + 1] if i < self.num_frames_per_proc - 1 else next_value
+            next_advantage = self.advantages[i + 1] if i < self.num_frames_per_proc - 1 else 0
 
             delta = self.rewards[i] + self.discount * next_value * next_mask - self.values[i]
             self.advantages[i] = delta + self.discount * self.gae_lambda * next_advantage * next_mask

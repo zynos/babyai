@@ -47,7 +47,8 @@ class PPOAlgo(BaseAlgo):
         (n_procs * n_frames_per_proc) x k 2D tensors where k is the number of classes for multiclass classification
         '''
 
-        for _ in range(self.epochs):
+        for epi in range(self.epochs):
+            print("ppo epoch",epi)
             # Initialize log values
 
             log_entropies = []

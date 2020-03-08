@@ -17,7 +17,11 @@ class Rudder:
         self.last_hidden=[None] * nr_procs
         # For the first timestep we will take (0-predictions[:, :1]) as redistributed reward
         self.last_predicted_reward = [None] * nr_procs
-
+        self.parallel_train_done=False
+        self.parallel_train_running = False
+        self.communication_file_path="/home/nick/PycharmProjects/babyRudder/babyai/myScripts/proc_communication.txt"
+        with open(self.communication_file_path, "w") as file:
+            file.write("init")
 
     def calc_quality(self,diff):
         # diff is g - gT_hat -->  see rudder paper A267
@@ -111,7 +115,7 @@ class Rudder:
         quality=0.1
         return quality
 
-    def train_and_set_metrics(self, episode,episode_id):
+    def train_and_set_metrics(self, episode):#,episode_id):
         # loss, returnn, quality = self.train_one_episode(episode)
         loss, returns, quality = self.feed_network(episode)
 
@@ -124,7 +128,7 @@ class Rudder:
         # print("Loss",loss)
         episode.loss = loss
         episode.returnn = returnn
-        self.replay_buffer.fast_losses[episode_id]=loss
+        # self.replay_buffer.fast_losses[episode_id]=loss
         # print("loss", loss)
         return quality > 0
 
@@ -132,15 +136,16 @@ class Rudder:
         # print("train_full_buffer")
         qualities=set()
         for epoch in range(5):
-            episodes,episodes_ids = self.replay_buffer.sample_episodes()
-            # episodes = self.replay_buffer.sample_episodes()
+            # episodes,episodes_ids = self.replay_buffer.sample_episodes()
+            episodes = self.replay_buffer.sample_episodes()
             for i,episode in enumerate(episodes):
-                quality=self.train_and_set_metrics(episode,episodes_ids[i])
-                # quality=self.train_and_set_metrics(episode)
+                # quality=self.train_and_set_metrics(episode,episodes_ids[i])
+                quality=self.train_and_set_metrics(episode)
 
                 # assert episode.returnn==self.replay_buffer.fast_returns[episodes_ids[i]]
                 qualities.add(quality)
-        print("sample {} loss {:.6f}".format(episodes_ids[-1],episode.loss))
+        print("last loss",episode.loss)
+        # print("sample {} return {:.4f} loss {:.6f}".format(episodes_ids[-1],episode.returnn,episode.loss))
         if False in qualities:
             self.train_full_buffer()
 
@@ -148,7 +153,7 @@ class Rudder:
         return [e for e in complete_episodes if e.rewards[-1] not in set(self.replay_buffer.get_returns())]
 
 
-    def new_replace_episode_data(self,idx,episode:ProcessData):
+    def new_replace_global_episode_data(self, idx, episode:ProcessData):
         # offset=10
         #the first 10 will never be overwritten for debug causes only!!!
         # idx = np.random.randint(offset,self.replay_buffer.max_size)
@@ -180,6 +185,15 @@ class Rudder:
             return low_index
         return -1
 
+    def replace_global_episode_loss(self,idx,episode):
+        self.replay_buffer.fast_losses[idx] = episode.loss
+
+    def update_whole_buffer_losses(self):
+        for i in range(self.replay_buffer.max_size):
+            episode = self.replay_buffer.get_episode_from_tensors(i)
+            self.inference_and_set_metrics(episode)
+            self.replace_global_episode_loss(i,episode)
+
     def new_add_to_replay_buffer(self,complete_episodes):
         replaced=False
         replaced_ids=set()
@@ -192,12 +206,19 @@ class Rudder:
                 self.replay_buffer.added_episodes+=1
                 # assert idx!=self.replay_buffer
             if idx != -1:
-                self.new_replace_episode_data(idx, ce)
+                self.new_replace_global_episode_data(idx, ce)
                 replaced = True
                 replaced_ids.add(idx)
         if replaced and self.replay_buffer.buffer_full():
-            self.train_full_buffer()
+            print("replaced", replaced_ids)
+            # self.train_full_buffer()
             # self.first_training_done=True
+        if self.parallel_train_done:
+            print("updating whole buffer")
+            # print("params",self.net.linear_out.weight[0][0])
+            self.update_whole_buffer_losses()
+            self.parallel_train_done=False
+
             print("replaced",replaced_ids)
 
 
