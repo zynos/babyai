@@ -2,6 +2,10 @@ import torch
 from myScripts.MyNet import Net
 from myScripts.ReplayBuffer import ReplayBuffer, ProcessData
 import numpy as np
+# import torch.multiprocessing as mp
+import multiprocessing as mp
+
+from myScripts.asyncTrain import inside_rudder
 #test test
 
 
@@ -17,6 +21,10 @@ class Rudder:
         self.last_hidden=[None] * nr_procs
         # For the first timestep we will take (0-predictions[:, :1]) as redistributed reward
         self.last_predicted_reward = [None] * nr_procs
+        self.ctx=mp.get_context("spawn")
+        self.process=self.ctx.Process(target=inside_rudder,args=(self,),daemon=True)
+        logger = mp.log_to_stderr()
+        logger.setLevel(mp.SUBDEBUG)
 
 
     def calc_quality(self,diff):
@@ -140,7 +148,7 @@ class Rudder:
 
                 # assert episode.returnn==self.replay_buffer.fast_returns[episodes_ids[i]]
                 qualities.add(quality)
-        print("sample {} loss {:.6f}".format(episodes_ids[-1],episode.loss))
+        # print("sample {} loss {:.6f}".format(episodes_ids[-1],episode.loss))
         if False in qualities:
             self.train_full_buffer()
 
@@ -196,7 +204,19 @@ class Rudder:
                 replaced = True
                 replaced_ids.add(idx)
         if replaced and self.replay_buffer.buffer_full():
-            self.train_full_buffer()
+            self.net.share_memory()
+            if not self.process.is_alive():
+                try:
+                    self.process.start()
+                except:
+                    print("before join")
+                    self.process.join()
+                    print("after join")
+                    self.process=self.ctx.Process(target=inside_rudder, args=(self,),daemon=True)
+                    print("want to start")
+                    self.process.start()
+                    print("started")
+            # self.train_full_buffer()
             # self.first_training_done=True
             print("replaced",replaced_ids)
 

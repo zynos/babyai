@@ -11,3 +11,6 @@ def start_background_process(rudder,queue_in,queue_out):
 
 
 
+def inside_rudder(rudder):
+    # print("started async")
+    rudder.train_full_buffer()
