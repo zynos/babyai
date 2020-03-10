@@ -195,8 +195,9 @@ if __name__ == '__main__':
         status['i'] += 1
 
         # Print logs
-
+        print("trainrl",status['i'])
         if status['i'] % args.log_interval == 0:
+
             total_ellapsed_time = int(time.time() - total_start_time)
             fps = logs["num_frames"] / (update_end_time - update_start_time)
             duration = datetime.timedelta(seconds=total_ellapsed_time)
@@ -216,6 +217,7 @@ if __name__ == '__main__':
             format_str = ("U {} | E {} | F {:06} | FPS {:04.0f} | D {} | R:xsmM {: .2f} {: .2f} {: .2f} {: .2f} | "
                           "S {:.2f} | F:xsmM {:.1f} {:.1f} {} {} | H {:.3f} | V {:.3f} | "
                           "pL {: .3f} | vL {:.3f} | L {:.3f} | gN {:.3f} | ")
+            print("try to log")
 
             logger.info(format_str.format(*data))
             if args.tb:

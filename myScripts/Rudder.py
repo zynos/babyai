@@ -17,6 +17,7 @@ class Rudder:
         self.last_hidden=[None] * nr_procs
         # For the first timestep we will take (0-predictions[:, :1]) as redistributed reward
         self.last_predicted_reward = [None] * nr_procs
+        self.parallel_train_done=False
 
 
     def calc_quality(self,diff):
@@ -196,11 +197,20 @@ class Rudder:
                 replaced = True
                 replaced_ids.add(idx)
         if replaced and self.replay_buffer.buffer_full():
-            self.train_full_buffer()
+            # self.train_full_buffer()
             # self.first_training_done=True
             print("replaced",replaced_ids)
+            if self.parallel_train_done:
+                print("recalc")
+                self.recalculate_all_losses()
+                print("recalc done")
 
 
+    def recalculate_all_losses(self):
+        for i in range(self.replay_buffer.max_size):
+            episode=self.replay_buffer.get_episode_from_tensors(i)
+            self.inference_and_set_metrics(episode)
+            self.replay_buffer.fast_losses[i]=episode.loss
 
     def add_timestep_data(self, *args):
         complete_episodes = self.replay_buffer.add_timestep_data(*args)
