@@ -149,57 +149,26 @@ class Rudder:
         return [e for e in complete_episodes if e.rewards[-1] not in set(self.replay_buffer.get_returns())]
 
 
-    def new_replace_episode_data(self,idx,episode:ProcessData):
-        # offset=10
-        #the first 10 will never be overwritten for debug causes only!!!
-        # idx = np.random.randint(offset,self.replay_buffer.max_size)
-        stacked=torch.stack(episode.embeddings)
-        self.replay_buffer.embeddings[idx][:len(stacked)]=stacked
-        stacked = torch.stack(episode.images)
-        self.replay_buffer.images[idx][:len(stacked)] = stacked
-        stacked = torch.stack(episode.instructions)
-        self.replay_buffer.instructions[idx][:len(stacked)] = stacked
-        # stacked = torch.stack(episode.rewards)
-        stacked = episode.rewards
-        # self.replay_buffer.fast_returns[idx] = torch.sum(stacked)
-        self.replay_buffer.rewards[idx][:len(stacked)] = stacked
-        stacked = np.array(episode.dones)
-        self.replay_buffer.dones[idx][:len(stacked)] = stacked
-        stacked = torch.stack(episode.actions)
-        self.replay_buffer.actions[idx][:len(stacked)] = stacked
-
-        self.replay_buffer.fast_losses[idx]=episode.loss
-        self.replay_buffer.fast_returns[idx]=episode.returnn
-
-    def new_get_replacement_index(self,ce):
-        combined_ranks = self.replay_buffer.get_ranks(ce)
-        new_episode_rank = combined_ranks[-1]
-        # we don't want to get the new sample as potential minimum so remove it
-        combined_ranks = combined_ranks[:-1]
-        lowest_rank, low_index = self.replay_buffer.get_lowest_ranking_and_idx(combined_ranks)
-        if lowest_rank < new_episode_rank:
-            return low_index
-        return -1
-
     def new_add_to_replay_buffer(self,complete_episodes):
         replaced=False
         replaced_ids=set()
         for ce in complete_episodes:
             self.inference_and_set_metrics(ce)
             if self.replay_buffer.buffer_full():
-                idx=self.new_get_replacement_index(ce)
+                idx=self.replay_buffer.new_get_replacement_index(ce)
             else:
                 idx=self.replay_buffer.added_episodes
                 self.replay_buffer.added_episodes+=1
                 # assert idx!=self.replay_buffer
             if idx != -1:
-                self.new_replace_episode_data(idx, ce)
+                self.replay_buffer.new_replace_episode_data(idx, ce)
                 replaced = True
                 replaced_ids.add(idx)
         if replaced and self.replay_buffer.buffer_full():
             # self.train_full_buffer()
             # self.first_training_done=True
             print("replaced",replaced_ids)
+            print('non zero returns',np.count_nonzero(self.replay_buffer.fast_returns))
             if self.parallel_train_done:
                 print("recalc")
                 self.recalculate_all_losses()

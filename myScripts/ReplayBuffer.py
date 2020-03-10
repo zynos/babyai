@@ -111,6 +111,7 @@ class ReplayBuffer:
     def get_losses_and_returns(self):
         losses = self.get_losses()
         returns = self.get_returns()
+        assert len(losses)==len(returns)==self.max_size
         return losses,returns
 
     def get_ranks(self,new_episode:ProcessData):
@@ -155,6 +156,39 @@ class ReplayBuffer:
         # del result
         return complete_episodes
 
+    def new_get_replacement_index(self,ce):
+        combined_ranks = self.get_ranks(ce)
+        new_episode_rank = combined_ranks[-1]
+        # we don't want to get the new sample as potential minimum so remove it
+        combined_ranks = combined_ranks[:-1]
+        lowest_rank, low_index = self.get_lowest_ranking_and_idx(combined_ranks)
+        if lowest_rank < new_episode_rank:
+            return low_index
+        return -1
+
+    def new_replace_episode_data(self,idx,episode:ProcessData):
+        # offset=10
+        #the first 10 will never be overwritten for debug causes only!!!
+        # idx = np.random.randint(offset,self.replay_buffer.max_size)
+        stacked=torch.stack(episode.embeddings)
+        self.embeddings[idx][:len(stacked)]=stacked
+        stacked = torch.stack(episode.images)
+        self.images[idx][:len(stacked)] = stacked
+        stacked = torch.stack(episode.instructions)
+        self.instructions[idx][:len(stacked)] = stacked
+        # stacked = torch.stack(episode.rewards)
+        stacked = episode.rewards
+        # self.replay_buffer.fast_returns[idx] = torch.sum(stacked)
+        self.rewards[idx][:len(stacked)] = stacked
+        stacked = np.array(episode.dones)
+        self.dones[idx][:len(stacked)] = stacked
+        stacked = torch.stack(episode.actions)
+        self.actions[idx][:len(stacked)] = stacked
+
+        self.fast_losses[idx]=episode.loss
+        self.fast_returns[idx]=episode.returnn
+
+
     def get_episode_from_tensors(self,id):
         episode=ProcessData()
         max_idx=np.where(self.dones[id]==True)[0][0]
@@ -175,11 +209,15 @@ class ReplayBuffer:
         combined_ranks= self.get_combined_ranks(losses,retruns)
         # assert len(combined_ranks)<=self.max_size
         probs=torch.nn.functional.softmax(torch.tensor(combined_ranks))
+        if len(probs)>self.max_size:
+            print("fail3")
         m = Categorical(probs)
         episodes=[]
         ids=[]
         for _ in range(self.sample_amount):
             episode_id = m.sample()
+            if episode_id>=self.max_size:
+                print('fail')
             episode=self.get_episode_from_tensors(episode_id)
             # assert episode.returnn==self.fast_returns[episode_id]
             episodes.append(episode)
