@@ -1,10 +1,13 @@
 import torch
+from apex import amp
 from myScripts.MyNet import Net
 from myScripts.ReplayBuffer import ReplayBuffer, ProcessData
 import numpy as np
 #test test
 import multiprocessing as mp
 import logging
+
+
 
 class Rudder:
     def __init__(self, mem_dim, nr_procs, obs_space, instr_dim, ac_embed_dim, image_dim, action_space, device):
@@ -19,9 +22,11 @@ class Rudder:
         # For the first timestep we will take (0-predictions[:, :1]) as redistributed reward
         self.last_predicted_reward = [None] * nr_procs
         self.parallel_train_done=False
-        mpl = mp.log_to_stderr()
-        mpl.setLevel(logging.INFO)
+        # mpl = mp.log_to_stderr()
+        # mpl.setLevel(logging.INFO)
         self.updates=0
+        ### APEX
+        self.model, self.optimizer = amp.initialize(self.net, self.optimizer, opt_level="O1")
 
 
     def calc_quality(self,diff):
@@ -128,7 +133,11 @@ class Rudder:
         # loss, returnn, quality = self.train_one_episode(episode)
         loss, returns, quality = self.feed_network(episode)
 
-        loss.backward()
+        ### APEX
+        with amp.scale_loss(loss, self.optimizer) as scaled_loss:
+            scaled_loss.backward()
+        ###
+        # loss.backward()
         self.optimizer.step()
         self.optimizer.zero_grad()
 

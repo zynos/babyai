@@ -89,8 +89,12 @@ class BaseAlgo(ABC):
         self.obs = self.env.reset()
         self.obss = [None]*(shape[0])
 
-        self.memory = torch.zeros(shape[1], self.acmodel.memory_size, device=self.device)
-        self.memories = torch.zeros(*shape, self.acmodel.memory_size, device=self.device)
+        # APEX requires dtype=torch.float16
+        self.memory = torch.zeros(shape[1], self.acmodel.memory_size, device=self.device,dtype=torch.float16)
+        self.memories = torch.zeros(*shape, self.acmodel.memory_size, device=self.device,dtype=torch.float16)
+
+        # self.memory = torch.zeros(shape[1], self.acmodel.memory_size, device=self.device)
+        # self.memories = torch.zeros(*shape, self.acmodel.memory_size, device=self.device)
 
         self.mask = torch.ones(shape[1], device=self.device)
         self.masks = torch.zeros(*shape, device=self.device)
@@ -140,34 +144,34 @@ class BaseAlgo(ABC):
         # if update_nr == 6 and i == 14:
         #     print("d")
         # #
-        # if self.rudder.replay_buffer.buffer_full() and self.rudder.replay_buffer.encountered_different_returns() and i % 39 == 0:
-        #     self.rudder.train_full_buffer()
-        #     self.rudder.first_training_done = True
-        # if self.rudder.first_training_done:
-        #     self.rewards[i] = self.rudder.predict_reward(embedding, action, rewards, done,
-        #                                                  instr,
-        #                                                  image)
+        if self.rudder.replay_buffer.buffer_full() and self.rudder.replay_buffer.encountered_different_returns() and i % 39 == 0:
+            self.rudder.train_full_buffer()
+            self.rudder.first_training_done = True
+        if self.rudder.first_training_done:
+            self.rewards[i] = self.rudder.predict_reward(embedding, action, rewards, done,
+                                                         instr,
+                                                         image)
         #     # print("rudder rewards")
 
         ### ASYNCHRONOUS
 
-        if self.rudder.replay_buffer.buffer_full() and self.queue_into_rudder.empty():
-            self.queue_into_rudder.put(self.rudder.replay_buffer.get_cloned_copy())
-        # print("qsize", self.queue_into_rudder.qsize())
-        # print("i , self.queue_back_from_rudder.empty()",i, self.queue_back_from_rudder.empty())
-
-        if self.rudder.replay_buffer.buffer_full() and self.rudder.replay_buffer.encountered_different_returns() and i % 39 == 0:
-            print("recalc")
-            self.rudder.recalculate_all_losses()
-            print("recalc done")
-        if not self.queue_back_from_rudder.empty():
-            print("wanna get queue food")
-            self.rudder.first_training_done = queue_back_from_rudder.get()
-            self.rudder.parallel_train_done = True
-            assert isinstance(self.rudder.first_training_done, bool)
-        if self.rudder.first_training_done:
-            self.rewards[i] = self.rudder.predict_reward(embedding, action, rewards, done,
-                                                         instr, image)
+        # if self.rudder.replay_buffer.buffer_full() and self.queue_into_rudder.empty():
+        #     self.queue_into_rudder.put(self.rudder.replay_buffer.get_cloned_copy())
+        # # print("qsize", self.queue_into_rudder.qsize())
+        # # print("i , self.queue_back_from_rudder.empty()",i, self.queue_back_from_rudder.empty())
+        #
+        # if self.rudder.replay_buffer.buffer_full() and self.rudder.replay_buffer.encountered_different_returns() and i % 39 == 0:
+        #     print("recalc")
+        #     self.rudder.recalculate_all_losses()
+        #     print("recalc done")
+        # if not self.queue_back_from_rudder.empty():
+        #     print("wanna get queue food")
+        #     self.rudder.first_training_done = queue_back_from_rudder.get()
+        #     self.rudder.parallel_train_done = True
+        #     assert isinstance(self.rudder.first_training_done, bool)
+        # if self.rudder.first_training_done:
+        #     self.rewards[i] = self.rudder.predict_reward(embedding, action, rewards, done,
+        #                                                  instr, image)
             # assert 0==1
 
     def collect_experiences(self,update_nr):
@@ -192,10 +196,10 @@ class BaseAlgo(ABC):
 
         """
         # print("checkpoint 2")
-        if not self.p.is_alive() and not self.p.exitcode:
-            print("checkpoint 3")
-            self.rudder.net.share_memory()
-            self.p.start()
+        # if not self.p.is_alive() and not self.p.exitcode:
+        #     print("checkpoint 3")
+        #     self.rudder.net.share_memory()
+        #     self.p.start()
         # print(self.p.exitcode)
 
 
