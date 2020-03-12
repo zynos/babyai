@@ -10,6 +10,9 @@ from myScripts.ReplayBuffer import ReplayBuffer
 from myScripts.Rudder import Rudder
 from myScripts.asyncTrain import start_background_process
 
+
+
+
 class BaseAlgo(ABC):
     """The base class for RL algorithms."""
 
@@ -123,6 +126,50 @@ class BaseAlgo(ABC):
         self.queue_into_rudder=None
         self.queue_back_from_rudder=None
 
+    def update_rudder_and_rescale_rewards(self,update_nr, i,queue_into_rudder,queue_back_from_rudder, embedding, action,rewards, done,
+                                      instr, image):
+        ### SYNCHRONOUS
+        # embeddings,actions,rewards,dones,instructions,images
+
+        debug = update_nr >= 6 and i >= 15
+        debug = False
+        self.rudder.add_timestep_data(debug, queue_into_rudder, embedding, action, rewards, done,
+                                      instr, image)
+        # if debug:
+        #     print("after add_timestep_data", i)
+        # if update_nr == 6 and i == 14:
+        #     print("d")
+        # #
+        # if self.rudder.replay_buffer.buffer_full() and self.rudder.replay_buffer.encountered_different_returns() and i % 39 == 0:
+        #     self.rudder.train_full_buffer()
+        #     self.rudder.first_training_done = True
+        # if self.rudder.first_training_done:
+        #     self.rewards[i] = self.rudder.predict_reward(embedding, action, rewards, done,
+        #                                                  instr,
+        #                                                  image)
+        #     # print("rudder rewards")
+
+        ### ASYNCHRONOUS
+
+        if self.rudder.replay_buffer.buffer_full() and self.queue_into_rudder.empty():
+            self.queue_into_rudder.put(self.rudder.replay_buffer.get_cloned_copy())
+        # print("qsize", self.queue_into_rudder.qsize())
+        # print("i , self.queue_back_from_rudder.empty()",i, self.queue_back_from_rudder.empty())
+
+        if self.rudder.replay_buffer.buffer_full() and self.rudder.replay_buffer.encountered_different_returns() and i % 39 == 0:
+            print("recalc")
+            self.rudder.recalculate_all_losses()
+            print("recalc done")
+        if not self.queue_back_from_rudder.empty():
+            print("wanna get queue food")
+            self.rudder.first_training_done = queue_back_from_rudder.get()
+            self.rudder.parallel_train_done = True
+            assert isinstance(self.rudder.first_training_done, bool)
+        if self.rudder.first_training_done:
+            self.rewards[i] = self.rudder.predict_reward(embedding, action, rewards, done,
+                                                         instr, image)
+            # assert 0==1
+
     def collect_experiences(self,update_nr):
         """Collects rollouts and computes advantages.
 
@@ -145,10 +192,10 @@ class BaseAlgo(ABC):
 
         """
         # print("checkpoint 2")
-        # if not self.p.is_alive() and not self.p.exitcode:
-        #     print("checkpoint 3")
-        #     self.rudder.net.share_memory()
-        #     self.p.start()
+        if not self.p.is_alive() and not self.p.exitcode:
+            print("checkpoint 3")
+            self.rudder.net.share_memory()
+            self.p.start()
         # print(self.p.exitcode)
 
 
@@ -193,42 +240,8 @@ class BaseAlgo(ABC):
                 self.rewards[i] = torch.tensor(reward, device=self.device)
             # print("checkpoint 7")
             #RUDDER entry
-            ### SYNCHRONOUS
-            #embeddings,actions,rewards,dones,instructions,images
-            debug=update_nr>=6 and i>=15
-            debug=False
-            self.rudder.add_timestep_data(debug,self.queue_into_rudder,embedding,action,self.rewards[i],done,preprocessed_obs.instr,preprocessed_obs.image)
-            if debug:
-                print("after add_timestep_data",i)
-            if update_nr==6 and i==14:
-                print("d")
-            # #
-            if self.rudder.replay_buffer.buffer_full() and self.rudder.replay_buffer.encountered_different_returns() and i%39==0:
-                self.rudder.train_full_buffer()
-                self.rudder.first_training_done=True
-            if self.rudder.first_training_done:
-                self.rewards[i]=self.rudder.predict_reward(embedding,action,self.rewards[i],done,preprocessed_obs.instr,preprocessed_obs.image)
-                # print("rudder rewards")
-
-            ### ASYNCHRONOUS
-
-            # lis = [embedding, action, self.rewards[i], done, preprocessed_obs.instr, preprocessed_obs.image]
-            # if self.rudder.replay_buffer.buffer_full() and self.queue_into_rudder.empty():
-            #     self.queue_into_rudder.put(self.rudder.replay_buffer)
-            # print("qsize", self.queue_into_rudder.qsize())
-            # print("i , self.queue_back_from_rudder.empty()",i, self.queue_back_from_rudder.empty())
-            # if not self.queue_back_from_rudder.empty():
-            #     print("wanna get queue food")
-            #     train_done=self.queue_back_from_rudder.get()
-            #     self.rudder.parallel_train_done=True
-            #     assert isinstance(train_done,bool)
-            #     if train_done:
-            #         self.rewards[i] = self.rudder.predict_reward(embedding, action, self.rewards[i], done,
-            #                                                      preprocessed_obs.instr, preprocessed_obs.image)
-                    # assert 0==1
-
-
-
+            self.update_rudder_and_rescale_rewards(update_nr,i,self.queue_into_rudder, self.queue_back_from_rudder,embedding,
+                                                  action, self.rewards[i], done, preprocessed_obs.instr, preprocessed_obs.image)
 
             self.log_probs[i] = dist.log_prob(action)
 

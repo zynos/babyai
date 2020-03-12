@@ -12,8 +12,8 @@ import gym
 import time
 import datetime
 import torch
-from torch import multiprocessing as mp
-torch.set_num_threads(1)
+import multiprocessing as mp
+# torch.set_num_threads(1)
 from myScripts import asyncTrain
 import numpy as np
 import subprocess
