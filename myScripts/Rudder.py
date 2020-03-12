@@ -3,7 +3,8 @@ from myScripts.MyNet import Net
 from myScripts.ReplayBuffer import ReplayBuffer, ProcessData
 import numpy as np
 #test test
-
+import multiprocessing as mp
+import logging
 
 class Rudder:
     def __init__(self, mem_dim, nr_procs, obs_space, instr_dim, ac_embed_dim, image_dim, action_space, device):
@@ -18,6 +19,9 @@ class Rudder:
         # For the first timestep we will take (0-predictions[:, :1]) as redistributed reward
         self.last_predicted_reward = [None] * nr_procs
         self.parallel_train_done=False
+        mpl = mp.log_to_stderr()
+        mpl.setLevel(logging.INFO)
+        self.updates=0
 
 
     def calc_quality(self,diff):
@@ -93,7 +97,15 @@ class Rudder:
     def inference_and_set_metrics(self, episode: ProcessData):
         with torch.no_grad():
             # in train and set metrics rewards are a tensor
-            episode.rewards=torch.tensor(episode.rewards).to(self.device)
+
+            # episode.rewards=torch.from_numpy(np.array(episode.rewards)).to(self.device)
+            try:
+                # print("episode.rewards",episode.rewards)
+                episode.rewards=torch.stack(episode.rewards)
+            except:
+                pass
+            assert isinstance(episode.rewards,torch.Tensor)
+
             loss, returns,quality = self.feed_network(episode)
             loss = loss.detach().item()
             returnn = returns.detach().item()
@@ -149,30 +161,52 @@ class Rudder:
         return [e for e in complete_episodes if e.rewards[-1] not in set(self.replay_buffer.get_returns())]
 
 
-    def new_add_to_replay_buffer(self,complete_episodes):
+    def new_add_to_replay_buffer(self,complete_episodes,debug=False):
         replaced=False
         replaced_ids=set()
+        # print("in new_add_to_replay_buffer")
+        i=0
         for ce in complete_episodes:
+            if debug:
+                print("inference_and_set_metrics",i)
+                if i==248:
+                    print("so close")
+                i+=1
+
             self.inference_and_set_metrics(ce)
             if self.replay_buffer.buffer_full():
+                if debug:
+                    print("new_get_replacement_index")
                 idx=self.replay_buffer.new_get_replacement_index(ce)
             else:
                 idx=self.replay_buffer.added_episodes
                 self.replay_buffer.added_episodes+=1
                 # assert idx!=self.replay_buffer
             if idx != -1:
+                if debug:
+                    print("new_replace_episode_data")
                 self.replay_buffer.new_replace_episode_data(idx, ce)
                 replaced = True
                 replaced_ids.add(idx)
+        if debug:
+            print("after loop")
         if replaced and self.replay_buffer.buffer_full():
+            print("replaced",replaced_ids)
             # self.train_full_buffer()
             # self.first_training_done=True
-            print("replaced",replaced_ids)
             print('non zero returns',np.count_nonzero(self.replay_buffer.fast_returns))
-            if self.parallel_train_done:
-                print("recalc")
-                self.recalculate_all_losses()
-                print("recalc done")
+
+            # if self.parallel_train_done:
+            #     print("recalc")
+            #     self.recalculate_all_losses()
+            #     print("recalc done")
+                # if self.updates%1==0:
+                #     print("recalc")
+                #     self.recalculate_all_losses()
+                #     print("recalc done")
+                # self.updates+=1
+
+        # print("leaving new_add_to_replay_buffer")
 
 
     def recalculate_all_losses(self):
@@ -181,12 +215,22 @@ class Rudder:
             self.inference_and_set_metrics(episode)
             self.replay_buffer.fast_losses[i]=episode.loss
 
-    def add_timestep_data(self, *args):
+    def add_timestep_data(self,debug,queue_in_rudder, *args):
+        # print("in ts data 1")
         complete_episodes = self.replay_buffer.add_timestep_data(*args)
-
+        # print("in ts data 2")
         if self.replay_buffer.buffer_full():
             complete_episodes=self.remove_uninteresting_return_episodes(complete_episodes)
-        self.new_add_to_replay_buffer(complete_episodes)
+            # print("in ts data 3")
+        self.new_add_to_replay_buffer(complete_episodes,debug)
+        if debug:
+            print("in ts data 4")
+            if queue_in_rudder.empty():
+                print("feed queue inside")
+                queue_in_rudder.put(self.replay_buffer)
+        # print(queue.empty())
+        return
+
         # self.do_the_rest(complete_episodes)
 
 

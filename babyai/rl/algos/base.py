@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 import torch
-import multiprocessing as mp
-import numpy
+# import multiprocessing as mp
+# import numpy
 
 from babyai.rl.format import default_preprocess_obss
 from babyai.rl.utils import DictList, ParallelEnv
@@ -72,6 +72,7 @@ class BaseAlgo(ABC):
         # Store helpers values
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # self.device="cpu"
         self.num_procs = len(envs)
         self.num_frames = self.num_frames_per_proc * self.num_procs
 
@@ -122,7 +123,7 @@ class BaseAlgo(ABC):
         self.queue_into_rudder=None
         self.queue_back_from_rudder=None
 
-    def collect_experiences(self):
+    def collect_experiences(self,update_nr):
         """Collects rollouts and computes advantages.
 
         Runs several environments concurrently. The next actions are computed
@@ -143,14 +144,17 @@ class BaseAlgo(ABC):
             reward, policy loss, value loss, etc.
 
         """
-        if not self.p.is_alive() and not self.p.exitcode:
-            self.rudder.net.share_memory()
-            self.p.start()
-        print(self.p.exitcode)
+        # print("checkpoint 2")
+        # if not self.p.is_alive() and not self.p.exitcode:
+        #     print("checkpoint 3")
+        #     self.rudder.net.share_memory()
+        #     self.p.start()
+        # print(self.p.exitcode)
 
 
         for i in range(self.num_frames_per_proc):
             # Do one agent-environment interaction
+            # print("checkpoint 4")
 
             preprocessed_obs = self.preprocess_obss(self.obs, device=self.device)
             with torch.no_grad():
@@ -162,12 +166,12 @@ class BaseAlgo(ABC):
                 embedding=model_results['embedding']
 
             action = dist.sample()
-
+            # print("checkpoint 5")
             obs, reward, done, env_info = self.env.step(action.cpu().numpy())
             if self.aux_info:
                 env_info = self.aux_info_collector.process(env_info)
                 # env_info = self.process_aux_info(env_info)
-
+            # print("checkpoint 6")
             # Update experiences values
 
             self.obss[i] = self.obs
@@ -187,30 +191,40 @@ class BaseAlgo(ABC):
                 ], device=self.device)
             else:
                 self.rewards[i] = torch.tensor(reward, device=self.device)
-
+            # print("checkpoint 7")
             #RUDDER entry
             ### SYNCHRONOUS
             #embeddings,actions,rewards,dones,instructions,images
-
-            self.rudder.add_timestep_data(embedding,action,self.rewards[i],done,preprocessed_obs.instr,preprocessed_obs.image)
+            debug=update_nr>=6 and i>=15
+            debug=False
+            self.rudder.add_timestep_data(debug,self.queue_into_rudder,embedding,action,self.rewards[i],done,preprocessed_obs.instr,preprocessed_obs.image)
+            if debug:
+                print("after add_timestep_data",i)
+            if update_nr==6 and i==14:
+                print("d")
             # #
-            # if self.rudder.first_training_done:
-            #     self.rewards[i]=self.rudder.predict_reward(embedding,action,self.rewards[i],done,preprocessed_obs.instr,preprocessed_obs.image)
-            #     # print("rudder rewards")
+            if self.rudder.replay_buffer.buffer_full() and self.rudder.replay_buffer.encountered_different_returns() and i%39==0:
+                self.rudder.train_full_buffer()
+                self.rudder.first_training_done=True
+            if self.rudder.first_training_done:
+                self.rewards[i]=self.rudder.predict_reward(embedding,action,self.rewards[i],done,preprocessed_obs.instr,preprocessed_obs.image)
+                # print("rudder rewards")
 
             ### ASYNCHRONOUS
 
             # lis = [embedding, action, self.rewards[i], done, preprocessed_obs.instr, preprocessed_obs.image]
-            if self.rudder.replay_buffer.buffer_full() and self.queue_into_rudder.empty():
-                self.queue_into_rudder.put(self.rudder.replay_buffer)
+            # if self.rudder.replay_buffer.buffer_full() and self.queue_into_rudder.empty():
+            #     self.queue_into_rudder.put(self.rudder.replay_buffer)
             # print("qsize", self.queue_into_rudder.qsize())
-            if not self.queue_back_from_rudder.empty():
-                train_done=self.queue_back_from_rudder.get()
-                self.rudder.parallel_train_done=True
-                assert isinstance(train_done,bool)
-                if train_done:
-                    self.rewards[i] = self.rudder.predict_reward(embedding, action, self.rewards[i], done,
-                                                                 preprocessed_obs.instr, preprocessed_obs.image)
+            # print("i , self.queue_back_from_rudder.empty()",i, self.queue_back_from_rudder.empty())
+            # if not self.queue_back_from_rudder.empty():
+            #     print("wanna get queue food")
+            #     train_done=self.queue_back_from_rudder.get()
+            #     self.rudder.parallel_train_done=True
+            #     assert isinstance(train_done,bool)
+            #     if train_done:
+            #         self.rewards[i] = self.rudder.predict_reward(embedding, action, self.rewards[i], done,
+            #                                                      preprocessed_obs.instr, preprocessed_obs.image)
                     # assert 0==1
 
 
@@ -237,6 +251,7 @@ class BaseAlgo(ABC):
             self.log_episode_return *= self.mask
             self.log_episode_reshaped_return *= self.mask
             self.log_episode_num_frames *= self.mask
+            # print("checkpoint 8")
 
         # Add advantage and return to experiences
 
@@ -254,7 +269,7 @@ class BaseAlgo(ABC):
 
         # Flatten the data correctly, making sure that
         # each episode's data is a continuous chunk
-
+        # print("checkpoint 9")
         exps = DictList()
         exps.obs = [self.obss[i][j]
                     for j in range(self.num_procs)
@@ -298,6 +313,7 @@ class BaseAlgo(ABC):
         self.log_return = self.log_return[-self.num_procs:]
         self.log_reshaped_return = self.log_reshaped_return[-self.num_procs:]
         self.log_num_frames = self.log_num_frames[-self.num_procs:]
+        # print("checkpoint 10")
 
         return exps, log
 

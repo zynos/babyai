@@ -27,6 +27,10 @@ from babyai.evaluate import batch_evaluate
 from babyai.utils.agent import ModelAgent
 
 if __name__ == '__main__':
+    # mp.set_start_method('spawn')
+
+    mpl = mp.log_to_stderr()
+    mpl.setLevel(logging.INFO)
     # Parse arguments
     parser = ArgumentParser()
     parser.add_argument("--algo", default='ppo',
@@ -187,7 +191,7 @@ if __name__ == '__main__':
         # Update parameters
 
         update_start_time = time.time()
-        logs = algo.update_parameters()
+        logs = algo.update_parameters(status['i'])
         update_end_time = time.time()
 
         status['num_frames'] += logs["num_frames"]
@@ -196,6 +200,8 @@ if __name__ == '__main__':
 
         # Print logs
         print("trainrl",status['i'])
+        if status['i']==6:
+            print("danger")
         if status['i'] % args.log_interval == 0:
 
             total_ellapsed_time = int(time.time() - total_start_time)
