@@ -1,7 +1,7 @@
 import numpy
 import torch
 import torch.nn.functional as F
-
+from apex import amp
 
 from babyai.rl.algos.base import BaseAlgo
 
@@ -17,6 +17,9 @@ class PPOAlgo(BaseAlgo):
                  reshape_reward=None, aux_info=None):
         num_frames_per_proc = num_frames_per_proc or 128
 
+        # APEX
+        # self.optimizer = torch.optim.Adam(acmodel.parameters(), lr, (beta1, beta2), eps=adam_eps)
+        # acmodel, self.optimizer = amp.initialize(acmodel, self.optimizer, opt_level="O1")
         super().__init__(envs, acmodel, num_frames_per_proc, discount, lr, gae_lambda, entropy_coef,
                          value_loss_coef, max_grad_norm, recurrence, preprocess_obss, reshape_reward,
                          aux_info)
@@ -28,6 +31,9 @@ class PPOAlgo(BaseAlgo):
         assert self.batch_size % self.recurrence == 0
 
         self.optimizer = torch.optim.Adam(self.acmodel.parameters(), lr, (beta1, beta2), eps=adam_eps)
+
+
+
         self.batch_num = 0
 
     def update_parameters(self,update_nr):
@@ -130,6 +136,9 @@ class PPOAlgo(BaseAlgo):
                 # Update actor-critic
 
                 self.optimizer.zero_grad()
+                # APEX
+                # with amp.scale_loss(batch_loss, self.optimizer) as scaled_loss:
+                #     scaled_loss.backward()
                 batch_loss.backward()
                 grad_norm = sum(p.grad.data.norm(2) ** 2 for p in self.acmodel.parameters() if p.grad is not None) ** 0.5
                 torch.nn.utils.clip_grad_norm_(self.acmodel.parameters(), self.max_grad_norm)

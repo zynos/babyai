@@ -26,7 +26,7 @@ class Rudder:
         # mpl.setLevel(logging.INFO)
         self.updates=0
         ### APEX
-        self.model, self.optimizer = amp.initialize(self.net, self.optimizer, opt_level="O1")
+        # self.net, self.optimizer = amp.initialize(self.net, self.optimizer, opt_level="O1")
 
 
     def calc_quality(self,diff):
@@ -134,10 +134,11 @@ class Rudder:
         loss, returns, quality = self.feed_network(episode)
 
         ### APEX
-        with amp.scale_loss(loss, self.optimizer) as scaled_loss:
-            scaled_loss.backward()
+        # with amp.scale_loss(loss, self.optimizer) as scaled_loss:
+        #     scaled_loss.backward()
         ###
-        # loss.backward()
+        loss.backward()
+
         self.optimizer.step()
         self.optimizer.zero_grad()
 

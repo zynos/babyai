@@ -90,11 +90,11 @@ class BaseAlgo(ABC):
         self.obss = [None]*(shape[0])
 
         # APEX requires dtype=torch.float16
-        self.memory = torch.zeros(shape[1], self.acmodel.memory_size, device=self.device,dtype=torch.float16)
-        self.memories = torch.zeros(*shape, self.acmodel.memory_size, device=self.device,dtype=torch.float16)
+        # self.memory = torch.zeros(shape[1], self.acmodel.memory_size, device=self.device,dtype=torch.float16)
+        # self.memories = torch.zeros(*shape, self.acmodel.memory_size, device=self.device,dtype=torch.float16)
 
-        # self.memory = torch.zeros(shape[1], self.acmodel.memory_size, device=self.device)
-        # self.memories = torch.zeros(*shape, self.acmodel.memory_size, device=self.device)
+        self.memory = torch.zeros(shape[1], self.acmodel.memory_size, device=self.device)
+        self.memories = torch.zeros(*shape, self.acmodel.memory_size, device=self.device)
 
         self.mask = torch.ones(shape[1], device=self.device)
         self.masks = torch.zeros(*shape, device=self.device)
