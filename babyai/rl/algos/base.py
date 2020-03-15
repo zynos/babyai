@@ -11,8 +11,6 @@ from myScripts.Rudder import Rudder
 from myScripts.asyncTrain import start_background_process
 
 
-
-
 class BaseAlgo(ABC):
     """The base class for RL algorithms."""
 
@@ -79,7 +77,6 @@ class BaseAlgo(ABC):
         self.num_procs = len(envs)
         self.num_frames = self.num_frames_per_proc * self.num_procs
 
-
         assert self.num_frames_per_proc % self.recurrence == 0
 
         # Initialize experience values
@@ -87,7 +84,7 @@ class BaseAlgo(ABC):
         shape = (self.num_frames_per_proc, self.num_procs)
 
         self.obs = self.env.reset()
-        self.obss = [None]*(shape[0])
+        self.obss = [None] * (shape[0])
 
         # APEX requires dtype=torch.float16
         # self.memory = torch.zeros(shape[1], self.acmodel.memory_size, device=self.device,dtype=torch.float16)
@@ -118,23 +115,24 @@ class BaseAlgo(ABC):
         self.log_reshaped_return = [0] * self.num_procs
         self.log_num_frames = [0] * self.num_procs
 
-        #RUDDER changes
-        self.rudder=Rudder(acmodel.memory_dim,self.num_procs,acmodel.obs_space,
-                           acmodel.instr_dim,acmodel.memory_dim,acmodel.image_dim,
-                           acmodel.action_space,self.device)
+        # RUDDER changes
+        self.rudder = Rudder(acmodel.memory_dim, self.num_procs, acmodel.obs_space,
+                             acmodel.instr_dim, acmodel.memory_dim, acmodel.image_dim,
+                             acmodel.action_space, self.device)
         # self.ctx=mp.get_context("spawn")
         # self.queue=self.ctx.Queue()
         # self.async_func=start_background_process
         # self.background_process=self.ctx.Process(target=self.async_func, args=(self.rudder,self.queue,))
-        self.p=None
-        self.queue_into_rudder=None
-        self.queue_back_from_rudder=None
+        self.p = None
+        self.queue_into_rudder = None
+        self.queue_back_from_rudder = None
 
-    def update_rudder_and_rescale_rewards(self,update_nr, i,queue_into_rudder,queue_back_from_rudder, embedding, action,rewards, done,
-                                      instr, image):
+    def update_rudder_and_rescale_rewards(self, update_nr, i, queue_into_rudder, queue_back_from_rudder, embedding,
+                                          action, rewards, done,
+                                          instr, image):
         ### SYNCHRONOUS
         # embeddings,actions,rewards,dones,instructions,images
-
+        rudder_loss, last_ts_pred, full_pred = 0.0, 0.0, 0.0
         debug = update_nr >= 6 and i >= 15
         debug = False
         self.rudder.add_timestep_data(debug, queue_into_rudder, embedding, action, rewards, done,
@@ -145,7 +143,7 @@ class BaseAlgo(ABC):
         #     print("d")
         # #
         if self.rudder.replay_buffer.buffer_full() and self.rudder.replay_buffer.encountered_different_returns() and i % 39 == 0:
-            self.rudder.train_full_buffer()
+            rudder_loss, last_ts_pred, full_pred = self.rudder.train_full_buffer()
             self.rudder.first_training_done = True
         if self.rudder.first_training_done:
             self.rewards[i] = self.rudder.predict_reward(embedding, action, rewards, done,
@@ -172,9 +170,11 @@ class BaseAlgo(ABC):
         # if self.rudder.first_training_done:
         #     self.rewards[i] = self.rudder.predict_reward(embedding, action, rewards, done,
         #                                                  instr, image)
-            # assert 0==1
+        # assert 0==1
 
-    def collect_experiences(self,update_nr):
+        return rudder_loss, last_ts_pred, full_pred
+
+    def collect_experiences(self, update_nr):
         """Collects rollouts and computes advantages.
 
         Runs several environments concurrently. The next actions are computed
@@ -202,7 +202,6 @@ class BaseAlgo(ABC):
         #     self.p.start()
         # print(self.p.exitcode)
 
-
         for i in range(self.num_frames_per_proc):
             # Do one agent-environment interaction
             # print("checkpoint 4")
@@ -214,7 +213,7 @@ class BaseAlgo(ABC):
                 value = model_results['value']
                 memory = model_results['memory']
                 extra_predictions = model_results['extra_predictions']
-                embedding=model_results['embedding']
+                embedding = model_results['embedding']
 
             action = dist.sample()
             # print("checkpoint 5")
@@ -243,9 +242,12 @@ class BaseAlgo(ABC):
             else:
                 self.rewards[i] = torch.tensor(reward, device=self.device)
             # print("checkpoint 7")
-            #RUDDER entry
-            self.update_rudder_and_rescale_rewards(update_nr,i,self.queue_into_rudder, self.queue_back_from_rudder,embedding,
-                                                  action, self.rewards[i], done, preprocessed_obs.instr, preprocessed_obs.image)
+            # RUDDER entry
+            rudder_loss, last_ts_pred, full_pred = \
+                self.update_rudder_and_rescale_rewards(update_nr, i, self.queue_into_rudder,
+                                                       self.queue_back_from_rudder, embedding,
+                                                       action, self.rewards[i], done, preprocessed_obs.instr,
+                                                       preprocessed_obs.image)
 
             self.log_probs[i] = dist.log_prob(action)
 
@@ -277,9 +279,9 @@ class BaseAlgo(ABC):
             next_value = self.acmodel(preprocessed_obs, self.memory * self.mask.unsqueeze(1))['value']
 
         for i in reversed(range(self.num_frames_per_proc)):
-            next_mask = self.masks[i+1] if i < self.num_frames_per_proc - 1 else self.mask
-            next_value = self.values[i+1] if i < self.num_frames_per_proc - 1 else next_value
-            next_advantage = self.advantages[i+1] if i < self.num_frames_per_proc - 1 else 0
+            next_mask = self.masks[i + 1] if i < self.num_frames_per_proc - 1 else self.mask
+            next_value = self.values[i + 1] if i < self.num_frames_per_proc - 1 else next_value
+            next_advantage = self.advantages[i + 1] if i < self.num_frames_per_proc - 1 else 0
 
             delta = self.rewards[i] + self.discount * next_value * next_mask - self.values[i]
             self.advantages[i] = delta + self.discount * self.gae_lambda * next_advantage * next_mask
@@ -324,6 +326,9 @@ class BaseAlgo(ABC):
             "num_frames_per_episode": self.log_num_frames[-keep:],
             "num_frames": self.num_frames,
             "episodes_done": self.log_done_counter,
+            "rudder_loss":rudder_loss,
+                "rudder_pred_last":last_ts_pred,
+        "rudder_pred_sum":full_pred,
         }
 
         self.log_done_counter = 0

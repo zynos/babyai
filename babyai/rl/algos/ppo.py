@@ -1,7 +1,7 @@
 import numpy
 import torch
 import torch.nn.functional as F
-from apex import amp
+# from apex import amp
 
 from babyai.rl.algos.base import BaseAlgo
 

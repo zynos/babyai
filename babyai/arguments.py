@@ -29,7 +29,7 @@ class ArgumentParser(argparse.ArgumentParser):
                             help="log into Tensorboard")
 
         # Training arguments
-        self.add_argument("--log-interval", type=int, default=10,
+        self.add_argument("--log-interval", type=int, default=1,
                             help="number of updates between two logs (default: 10)")
         self.add_argument("--save-interval", type=int, default=10,
                             help="number of updates between two saves (default: 1000, 0 means no saving)")
