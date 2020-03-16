@@ -12,8 +12,8 @@ class Rudder:
     def __init__(self, mem_dim, nr_procs, obs_space, instr_dim, ac_embed_dim, image_dim, action_space, device):
         self.replay_buffer = ReplayBuffer(nr_procs, ac_embed_dim, device)
         self.net = Net(image_dim, obs_space, instr_dim, ac_embed_dim, action_space).to(device)
-        # self.optimizer = torch.optim.Adam(self.net.parameters(), lr=1e-5, weight_decay=1e-6)
-        self.optimizer = torch.optim.Adam(self.net.parameters())
+        self.optimizer = torch.optim.Adam(self.net.parameters(), lr=1e-4, weight_decay=1e-5)
+        # self.optimizer = torch.optim.Adam(self.net.parameters())
 
         self.device = device
         self.first_training_done = False
@@ -236,9 +236,8 @@ class Rudder:
         # print("in ts data 1")
         complete_episodes = self.replay_buffer.add_timestep_data(*args)
         # print("in ts data 2")
-        if self.replay_buffer.buffer_full():
-            complete_episodes = self.remove_uninteresting_return_episodes(complete_episodes)
-            # print("in ts data 3")
+        # if self.replay_buffer.buffer_full():
+
         self.new_add_to_replay_buffer(complete_episodes, debug)
         if debug:
             print("in ts data 4")

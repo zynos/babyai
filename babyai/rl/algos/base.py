@@ -243,7 +243,7 @@ class BaseAlgo(ABC):
                 self.rewards[i] = torch.tensor(reward, device=self.device)
             # print("checkpoint 7")
             # RUDDER entry
-            rudder_loss, last_ts_pred, full_pred = \
+            rudder_loss, last_ts_pred, last_rew_mean = \
                 self.update_rudder_and_rescale_rewards(update_nr, i, self.queue_into_rudder,
                                                        self.queue_back_from_rudder, embedding,
                                                        action, self.rewards[i], done, preprocessed_obs.instr,
@@ -328,7 +328,7 @@ class BaseAlgo(ABC):
             "episodes_done": self.log_done_counter,
             "rudder_loss":rudder_loss,
                 "rudder_pred_last":last_ts_pred,
-        "rudder_pred_sum":full_pred,
+        "LastRew_mean":last_rew_mean,
         }
 
         self.log_done_counter = 0
