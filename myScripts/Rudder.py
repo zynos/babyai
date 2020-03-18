@@ -67,6 +67,11 @@ class Rudder:
                 predictions.append(pred_reward)
         return torch.stack(predictions).squeeze()
 
+    def predict_full_episode(self,episode: ProcessData):
+        predictions, hidden = self.net(episode,None,True)
+        return predictions
+
+
     def predict_every_timestep(self, episode: ProcessData):
         hidden = None
         predictions = []
@@ -91,7 +96,8 @@ class Rudder:
         return loss, returns, quality
 
     def feed_network(self, episode: ProcessData):
-        predictions = self.predict_every_timestep(episode)
+        predictions = self.predict_full_episode(episode)
+        # predictions = self.predict_every_timestep(episode)
         returns = torch.sum(episode.rewards, dim=-1)
         # returns = np.sum(episode.rewards)
         loss, quality = self.lossfunction(predictions, returns)

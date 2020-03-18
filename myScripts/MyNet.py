@@ -33,27 +33,29 @@ class Net(nn.Module):
         self.lstm=nn.LSTM(self.combined_input_dim,self.rudder_lstm_out,batch_first=True)
 
 
-    def extract_dict_values(self,dic,batch):
-        if batch:
-            image = torch.transpose(dic["images"], 1, 3)
-            instruction = dic["instructions"]
-            action = dic["actions"]
-            embedding = dic["embeddings"]
-
-        else:
-            image = dic["images"].transpose(0,2).unsqueeze(0)
-            instruction = dic["instructions"].unsqueeze(0)
-            action=dic["actions"].unsqueeze(0)
-            embedding=dic["embeddings"].unsqueeze(0).unsqueeze(0)
+    def extract_process_data(self,dic):
+        image = torch.transpose(torch.stack(dic.images), 1, 3)
+        instruction = torch.stack(dic.instructions)
+        action = torch.stack(dic.actions)
+        embedding = torch.stack(dic.embeddings)
+        return image, instruction, action, embedding
+    def extract_dict_values(self,dic):
+        image = dic["images"].transpose(0,2).unsqueeze(0)
+        instruction = dic["instructions"].unsqueeze(0)
+        action=dic["actions"].unsqueeze(0)
+        embedding=dic["embeddings"].unsqueeze(0).unsqueeze(0)
         return image,instruction,action,embedding
 
     def forward(self, dic,hidden,batch=False):
-        image, instruction, action, embedding=self.extract_dict_values(dic,batch)
+        if batch:
+            image, instruction, action, embedding = self.extract_process_data(dic)
+        else:
+            image, instruction, action, embedding=self.extract_dict_values(dic)
         if batch:
             image = self.image_conv(image).squeeze(2).squeeze(2)
             instruction = self.instr_rnn(self.word_embedding(instruction))[1][-1]
             action = torch.nn.functional.one_hot(action, num_classes=self.action_space).float()
-            x = torch.cat([image, instruction, action, embedding], dim=-1).unsqueeze(0).transpose(0,1)
+            x = torch.cat([image, instruction, action, embedding], dim=-1).unsqueeze(0)
         else:
             image=self.image_conv(image).squeeze(2).squeeze(2).unsqueeze(0)
             instruction=self.instr_rnn(self.word_embedding(instruction))[1][-1].unsqueeze(0)
@@ -62,7 +64,7 @@ class Net(nn.Module):
             x=torch.cat([image,instruction,action,compressed_embedding],dim=-1)
         batch_size=x.shape[0]
         # self.init_hidden(batch_size)
-        if hidden:
+        if not hidden:
             x, hidden = self.lstm(x)
         else:
             x,hidden=self.lstm(x,hidden)

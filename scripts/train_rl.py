@@ -29,8 +29,8 @@ from babyai.utils.agent import ModelAgent
 if __name__ == '__main__':
     # mp.set_start_method('spawn')
 
-    mpl = mp.log_to_stderr()
-    mpl.setLevel(logging.INFO)
+    # mpl = mp.log_to_stderr()
+    # mpl.setLevel(logging.INFO)
     # Parse arguments
     parser = ArgumentParser()
     parser.add_argument("--algo", default='ppo',
