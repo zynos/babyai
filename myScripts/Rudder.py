@@ -170,7 +170,7 @@ class Rudder:
                     last_rewards.append(episode.rewards[-1].item())
                     # assert episode.returnn==self.replay_buffer.fast_returns[episodes_ids[i]]
                     qualities.add(quality)
-            print("sample {} loss {:.6f}".format(episodes_ids[-1], episode.loss))
+            print("sample {} return {:.2f} loss {:.6f}".format(episodes_ids[-1], episode.returnn,episode.loss))
             if False not in qualities:
                 bad_quality = False
         full_predictions = torch.cat(full_predictions,dim=-1)
@@ -208,11 +208,11 @@ class Rudder:
                 replaced_ids.add(idx)
         if debug:
             print("after loop")
-        if replaced and self.replay_buffer.buffer_full():
-            print("replaced", replaced_ids)
+        # if replaced and self.replay_buffer.buffer_full():
+            # print("replaced", replaced_ids)
             # self.train_full_buffer()
             # self.first_training_done=True
-            print('non zero returns', np.count_nonzero(self.replay_buffer.fast_returns))
+            # print('non zero returns', np.count_nonzero(self.replay_buffer.fast_returns))
 
             # if self.parallel_train_done:
             #     print("recalc")

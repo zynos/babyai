@@ -1,4 +1,6 @@
 from abc import ABC, abstractmethod
+
+import numpy as np
 import torch
 # import multiprocessing as mp
 # import numpy
@@ -145,6 +147,7 @@ class BaseAlgo(ABC):
         if self.rudder.replay_buffer.buffer_full() and self.rudder.replay_buffer.encountered_different_returns() and i % 39 == 0:
             rudder_loss, last_ts_pred, full_pred = self.rudder.train_full_buffer()
             self.rudder.first_training_done = True
+            print('non zero returns', np.count_nonzero(self.rudder.replay_buffer.fast_returns))
         if self.rudder.first_training_done:
             self.rewards[i] = self.rudder.predict_reward(embedding, action, rewards, done,
                                                          instr,

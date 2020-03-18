@@ -62,7 +62,7 @@ class Net(nn.Module):
             x=torch.cat([image,instruction,action,compressed_embedding],dim=-1)
         batch_size=x.shape[0]
         # self.init_hidden(batch_size)
-        if hidden:
+        if not hidden:
             x, hidden = self.lstm(x)
         else:
             x,hidden=self.lstm(x,hidden)
