@@ -78,14 +78,15 @@ class Net(nn.Module):
         return image, instruction, action, embedding
 
     def prepare_input(self, dic, batch, use_transformer):
-        if batch:
-            image, instruction, action, embedding = self.extract_process_data(dic)
-            # if use_transformer:
-            #     image, instruction, action, embedding = self.extract_process_data(dic)
-            # else:
-            #     image, instruction, action, embedding = self.extract_dict_values(dic)
-        else:
-            image, instruction, action, embedding = self.extract_dict_values(dic)
+        # if batch:
+        #     image, instruction, action, embedding = self.extract_process_data(dic)
+        #     # if use_transformer:
+        #     #     image, instruction, action, embedding = self.extract_process_data(dic)
+        #     # else:
+        #     #     image, instruction, action, embedding = self.extract_dict_values(dic)
+        # else:
+        #     image, instruction, action, embedding = self.extract_dict_values(dic)
+        image, instruction, action, embedding = self.extract_process_data(dic)
         if batch:
             image = self.image_conv(image).squeeze(2).squeeze(2)
             instruction = self.instr_rnn(self.word_embedding(instruction))[1][-1]
@@ -95,7 +96,7 @@ class Net(nn.Module):
             image = self.image_conv(image).squeeze(2).squeeze(2).unsqueeze(0)
             instruction = self.instr_rnn(self.word_embedding(instruction))[1][-1].unsqueeze(0)
             action = torch.nn.functional.one_hot(action, num_classes=self.action_space).float().unsqueeze(0)
-            compressed_embedding = self.embedding_reducer(embedding)
+            compressed_embedding = self.embedding_reducer(embedding).unsqueeze(0)
             x = torch.cat([image, instruction, action, compressed_embedding], dim=-1)
         return x
 
@@ -120,7 +121,13 @@ class Net(nn.Module):
             else:
                 x, hidden = self.lstm(x, hidden)
             x = self.linear_out(x.squeeze(1))
-            if batch:
-                x = x.squeeze(2)
+            # if batch:
+            #     x = x.squeeze(2)
+
+
+            # 1 timestep samples are 2d
+            if not x.ndim == 3:
+                x = x.unsqueeze(0)
+
 
             return x, hidden

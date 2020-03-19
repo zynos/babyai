@@ -144,7 +144,7 @@ class BaseAlgo(ABC):
         # if update_nr == 6 and i == 14:
         #     print("d")
         # #
-        if self.rudder.replay_buffer.buffer_full() and self.rudder.replay_buffer.encountered_different_returns() and i % 39 == 0:
+        if self.rudder.replay_buffer.buffer_full() and self.rudder.replay_buffer.encountered_different_returns() and i ==39:
             rudder_loss, last_ts_pred, full_pred = self.rudder.train_full_buffer()
             self.rudder.first_training_done = True
             print('non zero returns', np.count_nonzero(self.rudder.replay_buffer.fast_returns))

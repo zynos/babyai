@@ -24,8 +24,18 @@ class ProcessData():
         self.instructions.append(instruction)
 
     def get_timestep_data(self, timestep):
-        return {key: value[timestep] for key, value in self.__dict__.items()
-                if not key.startswith('__') and not callable(key)}
+        dummy=ProcessData()
+        dummy.rewards.append(self.rewards[timestep])
+        dummy.actions.append(self.actions[timestep])
+        dummy.dones.append(self.dones[timestep])
+        dummy.embeddings.append(self.embeddings[timestep])
+        dummy.images.append(self.images[timestep])
+        dummy.instructions.append(self.instructions[timestep])
+        return dummy
+
+
+        # return {key: value[timestep] for key, value in self.__dict__.items()
+        #         if not key.startswith('__') and not callable(key)}
         # return {key: value[timestep] for key, value in self.__dict__.items()
         #         if not key.startswith('__') and not callable(key) and isinstance(value, list)}
 

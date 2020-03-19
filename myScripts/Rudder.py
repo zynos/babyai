@@ -11,7 +11,7 @@ import logging
 class Rudder:
     def __init__(self, mem_dim, nr_procs, obs_space, instr_dim, ac_embed_dim, image_dim, action_space, device):
         self.replay_buffer = ReplayBuffer(nr_procs, ac_embed_dim, device)
-        self.train_timesteps=False
+        self.train_timesteps = False
         self.net = Net(image_dim, obs_space, instr_dim, ac_embed_dim, action_space).to(device)
         self.optimizer = torch.optim.Adam(self.net.parameters(), lr=1e-4, weight_decay=1e-5)
         # self.optimizer = torch.optim.Adam(self.net.parameters())
@@ -47,12 +47,22 @@ class Rudder:
         loss = main_loss + aux_loss * 0.5
         return loss, quality
 
-    def get_lstm_prediction(self, proc_id, data, done,batch):
+    def get_lstm_prediction(self, proc_id, data, done, batch):
+        if not batch:
+            data = data.get_timestep_data(len(data.dones) - 1)
         hidden = self.last_hidden[proc_id]
-        pred, hidden = self.net(data, hidden,not self.train_timesteps)
-        if not self.train_timesteps:
-            pred=pred[-1][-1]
-        if self.last_predicted_reward[proc_id] == None:
+        pred, hidden = self.net(data, hidden, not self.train_timesteps)
+        # 1 timestep samples are 2d
+        # if not pred.ndim == 3:
+        #     pred = pred.unsqueeze(0)
+        # if not self.train_timesteps:
+        try:
+            pred = pred[-1][-1][-1]
+        except:
+            pred = pred[-1][-1]
+        # print(pred.shape)
+
+        if not self.last_predicted_reward[proc_id]:
             # first timestep
             pred_reward = 0 - pred
         else:
@@ -91,19 +101,19 @@ class Rudder:
     def predict_reward(self, embeddings, actions, rewards, dones, instructions, images):
         predictions = []
         use_transformer = False
-        batch=False
+        batch = not self.train_timesteps
         for proc_id, done in enumerate(dones):
             data = self.replay_buffer.proc_data_buffer[proc_id]
             with torch.no_grad():
                 if use_transformer:
                     pred_reward = self.get_transformer_prediction(proc_id, data, done)
                 else:
-                    pred_reward = self.get_lstm_prediction(proc_id, data, done,batch)
+                    pred_reward = self.get_lstm_prediction(proc_id, data, done, batch)
                 predictions.append(pred_reward)
         return torch.stack(predictions).squeeze()
 
     def predict_full_episode(self, episode: ProcessData):
-        predictions, hidden = self.net(episode, None,True)
+        predictions, hidden = self.net(episode, None, True)
         return predictions
 
     def predict_every_timestep(self, episode: ProcessData):
