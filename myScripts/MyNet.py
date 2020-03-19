@@ -1,25 +1,32 @@
 import torch
 from torch import nn
+from widis_lstm_tools.nn import LSTMLayer
+
 
 class Net(nn.Module):
-    def __init__(self,image_dim,obs_space,instr_dim,ac_embed_dim,action_space):
+    def __init__(self, image_dim, obs_space, instr_dim, ac_embed_dim, action_space):
         super(Net, self).__init__()
-        self.action_space=action_space.n
-        self.image_dim=image_dim
-        self.instr_dim=instr_dim
-        self.ac_embed_dim=ac_embed_dim
-        self.rudder_lstm_out=128
+        self.action_space = action_space.n
+        self.image_dim = image_dim
+        self.instr_dim = instr_dim
+        self.ac_embed_dim = ac_embed_dim
+        self.rudder_lstm_out = 128
         self.word_embedding = nn.Embedding(obs_space["instr"], self.instr_dim)
-        self.compressed_embedding=128
-        self.combined_input_dim=action_space.n+self.compressed_embedding+instr_dim+image_dim
-        self.embedding_reducer=nn.Linear(ac_embed_dim,self.compressed_embedding)
+        self.compressed_embedding = 128
+        self.combined_input_dim = action_space.n + self.compressed_embedding + instr_dim + image_dim
+        self.embedding_reducer = nn.Linear(ac_embed_dim, self.compressed_embedding)
 
-        self.linear_out=nn.Linear(self.rudder_lstm_out,1)
+        self.linear_out = nn.Linear(self.rudder_lstm_out, 1)
         self.instr_rnn = nn.GRU(
             self.instr_dim, self.instr_dim,
             batch_first=True,
             bidirectional=False)
 
+        encoder_layer = nn.TransformerEncoderLayer(d_model=self.combined_input_dim, nhead=1)
+        self.transformer_input_encoder = nn.TransformerEncoder(encoder_layer, num_layers=6)
+        encoder_layer = nn.TransformerEncoderLayer(d_model=self.combined_input_dim * 2, nhead=1)
+        self.transformer_combined_encoder = nn.TransformerEncoder(encoder_layer, num_layers=6)
+        self.fc_out_trans = torch.nn.Linear(self.combined_input_dim, 1)
 
         self.image_conv = nn.Sequential(
             nn.Conv2d(in_channels=3, out_channels=16, kernel_size=(2, 2)),
@@ -30,44 +37,90 @@ class Net(nn.Module):
             nn.Conv2d(in_channels=32, out_channels=image_dim, kernel_size=(2, 2)),
             nn.ReLU()
         )
-        self.lstm=nn.LSTM(self.combined_input_dim,self.rudder_lstm_out,batch_first=True)
+        self.lstm = nn.LSTM(self.combined_input_dim, self.rudder_lstm_out, batch_first=True)
 
+        self.widi_lstm = LSTMLayer(
+            in_features=self.combined_input_dim, out_features=self.rudder_lstm_out, inputformat='NLC',
+            # cell input: initialize weights to forward inputs with xavier, disable connections to recurrent inputs
+            w_ci=(torch.nn.init.xavier_normal_, False),
+            # input gate: disable connections to forward inputs, initialize weights to recurrent inputs with xavier
+            w_ig=(False, torch.nn.init.xavier_normal_),
+            # output gate: disable all connection (=no forget gate) and disable bias
+            w_og=False, b_og=False,
+            # forget gate: disable all connection (=no forget gate) and disable bias
+            w_fg=False, b_fg=False,
+            # LSTM output activation is set to identity function
+            a_out=lambda x: x
+        )
 
-    def extract_process_data(self,dic):
-        image = torch.transpose(torch.stack(dic.images), 1, 3)
-        instruction = torch.stack(dic.instructions)
-        action = torch.stack(dic.actions)
-        embedding = torch.stack(dic.embeddings)
+    def extract_process_data(self, dic):
+        try:
+            image = torch.transpose(torch.stack(dic.images), 1, 3)
+            instruction = torch.stack(dic.instructions)
+            action = torch.stack(dic.actions)
+            embedding = torch.stack(dic.embeddings)
+        except:
+            image = torch.transpose(dic.images, 1, 3)
+            instruction = dic.instructions
+            action = dic.actions
+            embedding = dic.embeddings
+
         return image, instruction, action, embedding
-    def extract_dict_values(self,dic):
-        image = dic["images"].transpose(0,2).unsqueeze(0)
-        instruction = dic["instructions"].unsqueeze(0)
-        action=dic["actions"].unsqueeze(0)
-        embedding=dic["embeddings"].unsqueeze(0).unsqueeze(0)
-        return image,instruction,action,embedding
 
-    def forward(self, dic,hidden,batch=False):
+    def extract_dict_values(self, dic):
+        try:
+            image = dic["images"].transpose(0, 2).unsqueeze(0)
+            instruction = dic["instructions"].unsqueeze(0)
+            action = dic["actions"].unsqueeze(0)
+            embedding = dic["embeddings"].unsqueeze(0).unsqueeze(0)
+        except:
+            image, instruction, action, embedding = self.extract_process_data(dic)
+        return image, instruction, action, embedding
+
+    def prepare_input(self, dic, batch, use_transformer):
         if batch:
             image, instruction, action, embedding = self.extract_process_data(dic)
+            # if use_transformer:
+            #     image, instruction, action, embedding = self.extract_process_data(dic)
+            # else:
+            #     image, instruction, action, embedding = self.extract_dict_values(dic)
         else:
-            image, instruction, action, embedding=self.extract_dict_values(dic)
+            image, instruction, action, embedding = self.extract_dict_values(dic)
         if batch:
             image = self.image_conv(image).squeeze(2).squeeze(2)
             instruction = self.instr_rnn(self.word_embedding(instruction))[1][-1]
             action = torch.nn.functional.one_hot(action, num_classes=self.action_space).float()
             x = torch.cat([image, instruction, action, embedding], dim=-1).unsqueeze(0)
         else:
-            image=self.image_conv(image).squeeze(2).squeeze(2).unsqueeze(0)
-            instruction=self.instr_rnn(self.word_embedding(instruction))[1][-1].unsqueeze(0)
-            action=torch.nn.functional.one_hot(action, num_classes=self.action_space).float().unsqueeze(0)
-            compressed_embedding=self.embedding_reducer(embedding)
-            x=torch.cat([image,instruction,action,compressed_embedding],dim=-1)
-        batch_size=x.shape[0]
-        # self.init_hidden(batch_size)
-        if not hidden:
-            x, hidden = self.lstm(x)
-        else:
-            x,hidden=self.lstm(x,hidden)
-        x=self.linear_out(x.squeeze(1))
+            image = self.image_conv(image).squeeze(2).squeeze(2).unsqueeze(0)
+            instruction = self.instr_rnn(self.word_embedding(instruction))[1][-1].unsqueeze(0)
+            action = torch.nn.functional.one_hot(action, num_classes=self.action_space).float().unsqueeze(0)
+            compressed_embedding = self.embedding_reducer(embedding)
+            x = torch.cat([image, instruction, action, compressed_embedding], dim=-1)
+        return x
 
-        return x,hidden
+    def forward(self, dic, hidden, batch=False, use_transformer=False):
+        # use_trasnformer = True
+        x = self.prepare_input(dic, batch, use_transformer)
+        batch_size = x.shape[0]
+        # self.init_hidden(batch_size)
+        if use_transformer:
+            x = x.transpose(0, 1)
+            x = self.transformer_input_encoder(x)
+            x = x.transpose(0, 1)
+            # comb=torch.cat([hidden,new_hidden],dim=-1)
+
+            # out=self.transformer_combined_encoder(comb)
+
+            out = self.fc_out_trans(x.squeeze(1))
+            return out, None
+        else:
+            if not hidden:
+                x, hidden = self.lstm(x)
+            else:
+                x, hidden = self.lstm(x, hidden)
+            x = self.linear_out(x.squeeze(1))
+            if batch:
+                x = x.squeeze(2)
+
+            return x, hidden

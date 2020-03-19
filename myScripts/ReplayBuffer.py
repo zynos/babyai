@@ -60,6 +60,7 @@ class ReplayBuffer:
         self.nr_procs = nr_procs
         self.added_episodes = 0
         self.proc_data_buffer = [ProcessData() for _ in range(self.nr_procs)]
+        # self.proc_data_buffer_for_prediction = [ProcessData() for _ in range(self.nr_procs)]
         self.max_size = 128
         # self.replay_buffer = [None] * self.max_size
         self.big_counter = 0
@@ -151,7 +152,9 @@ class ReplayBuffer:
                 # self.proc_data_buffer[proc_id]=None
                 # self.proc_data_buffer[proc_id] = ProcessData()
         # print("complete episodes",len(complete_episodes))
-        self.init_process_data(procs_to_init)
+        # self.proc_data_buffer_for_prediction=deepcopy(self.proc_data_buffer)
+        self.procs_to_init=procs_to_init
+        # self.init_process_data(procs_to_init)
         # del data_list
         return complete_episodes
 

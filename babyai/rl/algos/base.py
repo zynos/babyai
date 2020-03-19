@@ -149,9 +149,13 @@ class BaseAlgo(ABC):
             self.rudder.first_training_done = True
             print('non zero returns', np.count_nonzero(self.rudder.replay_buffer.fast_returns))
         if self.rudder.first_training_done:
-            self.rewards[i] = self.rudder.predict_reward(embedding, action, rewards, done,
+        # print(i,image.shape)
+            ret=self.rudder.predict_reward(embedding, action, rewards, done,
                                                          instr,
                                                          image)
+            # print(ret)
+            self.rewards[i] = ret
+        self.rudder.replay_buffer.init_process_data(self.rudder.replay_buffer.procs_to_init)
         #     # print("rudder rewards")
 
         ### ASYNCHRONOUS
