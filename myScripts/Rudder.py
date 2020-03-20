@@ -7,9 +7,12 @@ import numpy as np
 import multiprocessing as mp
 import logging
 
+from torch.nn.utils import clip_grad_value_
+
 
 class Rudder:
     def __init__(self, mem_dim, nr_procs, obs_space, instr_dim, ac_embed_dim, image_dim, action_space, device):
+        self.clip_value = 0.5
         self.replay_buffer = ReplayBuffer(nr_procs, ac_embed_dim, device)
         self.train_timesteps = False
         self.net = Net(image_dim, obs_space, instr_dim, ac_embed_dim, action_space).to(device)
@@ -24,6 +27,7 @@ class Rudder:
         # For the first timestep we will take (0-predictions[:, :1]) as redistributed reward
         self.last_predicted_reward = [None] * nr_procs
         self.parallel_train_done = False
+        self.current_quality=0
         # mpl = mp.log_to_stderr()
         # mpl.setLevel(logging.INFO)
         self.updates = 0
@@ -188,7 +192,7 @@ class Rudder:
         #     scaled_loss.backward()
         ###
         loss.backward()
-
+        clip_grad_value_(self.net.parameters(), self.clip_value)
         self.optimizer.step()
         self.optimizer.zero_grad()
 
@@ -199,7 +203,7 @@ class Rudder:
         episode.returnn = returnn
         self.replay_buffer.fast_losses[episode_id] = loss
         # print("loss", loss)
-        return quality > 0, predictions
+        return quality, predictions
 
     def train_full_buffer(self):
         # print("train_full_buffer")
@@ -209,7 +213,8 @@ class Rudder:
         last_rewards = []
         bad_quality = True
         while bad_quality:
-            qualities = set()
+            qualities_bools = set()
+            qualities=[]
             for epoch in range(5):
                 episodes, episodes_ids = self.replay_buffer.sample_episodes()
                 # episodes = self.replay_buffer.sample_episodes()
@@ -221,9 +226,11 @@ class Rudder:
                     losses.append(episode.loss)
                     last_rewards.append(episode.rewards[-1].item())
                     # assert episode.returnn==self.replay_buffer.fast_returns[episodes_ids[i]]
-                    qualities.add(quality)
+                    qualities_bools.add(quality>0)
+                    qualities.append(quality)
+            self.current_quality=np.mean(qualities)
             print("sample {} return {:.2f} loss {:.6f}".format(episodes_ids[-1], episode.returnn, episode.loss))
-            if False not in qualities:
+            if False not in qualities_bools:
                 bad_quality = False
         # full_predictions = torch.cat(full_predictions, dim=-1)
         return np.mean(losses), np.mean(last_timestep_prediction), np.mean(

@@ -152,6 +152,13 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
             nn.Linear(64, 1)
         )
 
+        # Define critic's model
+        self.rudder_critic = nn.Sequential(
+            nn.Linear(self.embedding_size, 64),
+            nn.Tanh(),
+            nn.Linear(64, 1)
+        )
+
         # Initialize parameters correctly
         self.apply(initialize_parameters)
 
@@ -252,7 +259,12 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
         x = self.critic(embedding)
         value = x.squeeze(1)
 
-        return {'dist': dist, 'value': value, 'memory': memory, 'extra_predictions': extra_predictions,"embedding":embedding}
+        #RUDDER
+        x = self.rudder_critic(embedding)
+        rudder_value = x.squeeze(1)
+
+        return {'dist': dist, 'value': value, 'memory': memory, 'extra_predictions': extra_predictions,
+                "embedding":embedding, "rudder_value":rudder_value}
 
     def _get_instr_embedding(self, instr):
         if self.lang_model == 'gru':

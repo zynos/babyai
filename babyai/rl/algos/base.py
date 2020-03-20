@@ -99,8 +99,11 @@ class BaseAlgo(ABC):
         self.masks = torch.zeros(*shape, device=self.device)
         self.actions = torch.zeros(*shape, device=self.device, dtype=torch.int)
         self.values = torch.zeros(*shape, device=self.device)
+        self.rudder_values = torch.zeros(*shape, device=self.device)
         self.rewards = torch.zeros(*shape, device=self.device)
+        self.rudder_rewards = torch.zeros(*shape, device=self.device)
         self.advantages = torch.zeros(*shape, device=self.device)
+        self.rudder_advantages = torch.zeros(*shape, device=self.device)
         self.log_probs = torch.zeros(*shape, device=self.device)
 
         if self.aux_info:
@@ -118,6 +121,7 @@ class BaseAlgo(ABC):
         self.log_num_frames = [0] * self.num_procs
 
         # RUDDER changes
+        self.use_rudder = True
         self.rudder = Rudder(acmodel.memory_dim, self.num_procs, acmodel.obs_space,
                              acmodel.instr_dim, acmodel.memory_dim, acmodel.image_dim,
                              acmodel.action_space, self.device)
@@ -154,7 +158,7 @@ class BaseAlgo(ABC):
                                                          instr,
                                                          image)
             # print(ret)
-            self.rewards[i] = ret
+            self.rudder_rewards[i] = ret
         self.rudder.replay_buffer.init_process_data(self.rudder.replay_buffer.procs_to_init)
         #     # print("rudder rewards")
 
@@ -221,6 +225,7 @@ class BaseAlgo(ABC):
                 memory = model_results['memory']
                 extra_predictions = model_results['extra_predictions']
                 embedding = model_results['embedding']
+                rudder_value = model_results['rudder_value']
 
             action = dist.sample()
             # print("checkpoint 5")
@@ -241,6 +246,7 @@ class BaseAlgo(ABC):
             self.mask = 1 - torch.tensor(done, device=self.device, dtype=torch.float)
             self.actions[i] = action
             self.values[i] = value
+            self.rudder_values[i]=rudder_value
             if self.reshape_reward is not None:
                 self.rewards[i] = torch.tensor([
                     self.reshape_reward(obs_, action_, reward_, done_)
@@ -250,11 +256,12 @@ class BaseAlgo(ABC):
                 self.rewards[i] = torch.tensor(reward, device=self.device)
             # print("checkpoint 7")
             # RUDDER entry
-            rudder_loss, last_ts_pred, last_rew_mean = \
-                self.update_rudder_and_rescale_rewards(update_nr, i, self.queue_into_rudder,
-                                                       self.queue_back_from_rudder, embedding,
-                                                       action, self.rewards[i], done, preprocessed_obs.instr,
-                                                       preprocessed_obs.image)
+            if self.use_rudder:
+                rudder_loss, last_ts_pred, last_rew_mean = \
+                    self.update_rudder_and_rescale_rewards(update_nr, i, self.queue_into_rudder,
+                                                           self.queue_back_from_rudder, embedding,
+                                                           action, self.rewards[i], done, preprocessed_obs.instr,
+                                                           preprocessed_obs.image)
 
             self.log_probs[i] = dist.log_prob(action)
 
@@ -283,15 +290,21 @@ class BaseAlgo(ABC):
 
         preprocessed_obs = self.preprocess_obss(self.obs, device=self.device)
         with torch.no_grad():
-            next_value = self.acmodel(preprocessed_obs, self.memory * self.mask.unsqueeze(1))['value']
+            model_results = self.acmodel(preprocessed_obs, self.memory * self.mask.unsqueeze(1))
+            next_value = model_results['value']
+            next_rudder_value = model_results['rudder_value']
 
         for i in reversed(range(self.num_frames_per_proc)):
             next_mask = self.masks[i + 1] if i < self.num_frames_per_proc - 1 else self.mask
             next_value = self.values[i + 1] if i < self.num_frames_per_proc - 1 else next_value
-            next_advantage = self.advantages[i + 1] if i < self.num_frames_per_proc - 1 else 0
+            next_rudder_value = self.rudder_values[i + 1] if i < self.num_frames_per_proc - 1 else next_rudder_value
 
+            next_advantage = self.advantages[i + 1] if i < self.num_frames_per_proc - 1 else 0
+            next_rudder_advantage = self.rudder_advantages[i + 1] if i < self.num_frames_per_proc - 1 else 0
             delta = self.rewards[i] + self.discount * next_value * next_mask - self.values[i]
+            rudder_delta = self.rudder_rewards[i] + self.discount * next_rudder_value * next_mask - self.rudder_values[i]
             self.advantages[i] = delta + self.discount * self.gae_lambda * next_advantage * next_mask
+            self.rudder_advantages[i] = rudder_delta + self.discount * self.gae_lambda * next_rudder_advantage * next_mask
 
         # Flatten the data correctly, making sure that
         # each episode's data is a continuous chunk
@@ -311,9 +324,15 @@ class BaseAlgo(ABC):
         # for all tensors below, T x P -> P x T -> P * T
         exps.action = self.actions.transpose(0, 1).reshape(-1)
         exps.value = self.values.transpose(0, 1).reshape(-1)
+        exps.rudder_value = self.rudder_values.transpose(0, 1).reshape(-1)
         exps.reward = self.rewards.transpose(0, 1).reshape(-1)
         exps.advantage = self.advantages.transpose(0, 1).reshape(-1)
+        exps.rudder_advantage = self.rudder_advantages.transpose(0, 1).reshape(-1)
+        # a =a_o(1-qualityv) +a_r * quality
+        if self.use_rudder:
+            exps.advantage = exps.advantage*(1-self.rudder.current_quality)+exps.rudder_advantage*self.rudder.current_quality
         exps.returnn = exps.value + exps.advantage
+        exps.rudder_return = exps.rudder_value + exps.rudder_advantage
         exps.log_prob = self.log_probs.transpose(0, 1).reshape(-1)
 
         if self.aux_info:

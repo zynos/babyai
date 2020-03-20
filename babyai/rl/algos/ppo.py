@@ -95,6 +95,7 @@ class PPOAlgo(BaseAlgo):
                     model_results = self.acmodel(sb.obs, memory * sb.mask)
                     dist = model_results['dist']
                     value = model_results['value']
+                    rudder_value = model_results['rudder_value']
                     memory = model_results['memory']
                     extra_predictions = model_results['extra_predictions']
 
@@ -109,6 +110,16 @@ class PPOAlgo(BaseAlgo):
                     surr1 = (value - sb.returnn).pow(2)
                     surr2 = (value_clipped - sb.returnn).pow(2)
                     value_loss = torch.max(surr1, surr2).mean()
+
+                    #RUDDER
+                    if self.use_rudder:
+                        rudder_value_clipped = sb.rudder_value + torch.clamp(rudder_value - sb.rudder_value, -self.clip_eps, self.clip_eps)
+                        surr1 = (rudder_value - sb.rudder_return).pow(2)
+                        surr2 = (rudder_value_clipped - sb.rudder_return).pow(2)
+                        rudder_value_loss = torch.max(surr1, surr2).mean()
+
+                        combined_value_loss = value_loss + rudder_value_loss*self.rudder.current_quality
+                        value_loss = combined_value_loss
 
                     loss = policy_loss - self.entropy_coef * entropy + self.value_loss_coef * value_loss
 
