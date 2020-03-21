@@ -227,7 +227,7 @@ class Rudder:
                     last_rewards.append(episode.rewards[-1].item())
                     # assert episode.returnn==self.replay_buffer.fast_returns[episodes_ids[i]]
                     qualities_bools.add(quality>0)
-                    qualities.append(quality)
+                    qualities.append(np.clip(quality,0,1))
             self.current_quality=np.mean(qualities)
             print("sample {} return {:.2f} loss {:.6f}".format(episodes_ids[-1], episode.returnn, episode.loss))
             if False not in qualities_bools:

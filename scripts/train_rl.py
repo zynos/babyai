@@ -200,7 +200,7 @@ if __name__ == '__main__':
         status['i'] += 1
 
         # Print logs
-        print("trainrl",status['i'])
+        print("trainrl",status['i']," rudder influence",algo.rudder.current_quality)
         if status['i']==6:
             print("danger")
         if status['i'] % args.log_interval == 0:
