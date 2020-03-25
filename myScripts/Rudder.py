@@ -12,6 +12,7 @@ from torch.nn.utils import clip_grad_value_
 
 class Rudder:
     def __init__(self, mem_dim, nr_procs, obs_space, instr_dim, ac_embed_dim, image_dim, action_space, device):
+        self.use_transformer = False
         self.clip_value = 0.5
         self.replay_buffer = ReplayBuffer(nr_procs, ac_embed_dim, device)
         self.train_timesteps = False
@@ -39,6 +40,22 @@ class Rudder:
         # diff is g - gT_hat -->  see rudder paper A267
         quality = 1 - (np.abs(diff.item()) / self.mu) * 1 / (1 - self.quality_threshold)
         return quality
+
+    def paper_loss3(self,predictions, returns,rewards):
+
+        diff = predictions[:, -1] - returns
+        # Main task: predicting return at last timestep
+        quality = self.calc_quality(diff)
+        main_loss = diff ** 2
+        # Auxiliary task: predicting final return at every timestep ([..., None] is for correct broadcasting)
+        continuous_loss = torch.mean(predictions[:, :] - returns[..., None]) ** 2
+        # loss Le of the prediction of the output at t+10 at each time step t
+        rew_chunk = rewards[:, 10:]
+        pred_chunk = predictions[:, :-10]
+        # le10_loss =
+        # Combine losses
+        loss = main_loss + continuous_loss * 0.5
+        return loss, quality
 
     def lossfunction(self, predictions, returns):
         diff = predictions[:, -1] - returns
@@ -81,13 +98,14 @@ class Rudder:
 
     def get_transformer_prediction(self, proc_id, data, done):
         episode = self.replay_buffer.proc_data_buffer[proc_id]
-        pred, _ = self.net(episode, None, True)
+        pred, _ = self.net(episode, None, True,True)
         # print(pred)
-        try:
-            pred = pred[-1][-1][-1]
-        except:
-            print(pred.shape)
-            pred = pred[-1][-1]
+        pred = pred[-1][-1][-1]
+        # try:
+        #     pred = pred[-1][-1][-1]
+        # except:
+        #     print(pred.shape)
+        #     pred = pred[-1][-1]
         # print(pred)
         if self.last_predicted_reward[proc_id] == None:
             # first timestep
@@ -104,12 +122,11 @@ class Rudder:
 
     def predict_reward(self, embeddings, actions, rewards, dones, instructions, images):
         predictions = []
-        use_transformer = False
         batch = not self.train_timesteps
         for proc_id, done in enumerate(dones):
             data = self.replay_buffer.proc_data_buffer[proc_id]
             with torch.no_grad():
-                if use_transformer:
+                if self.use_transformer:
                     pred_reward = self.get_transformer_prediction(proc_id, data, done)
                 else:
                     pred_reward = self.get_lstm_prediction(proc_id, data, done, batch)
@@ -117,7 +134,7 @@ class Rudder:
         return torch.stack(predictions).squeeze()
 
     def predict_full_episode(self, episode: ProcessData):
-        predictions, hidden = self.net(episode, None, True)
+        predictions, hidden = self.net(episode, None, True,self.use_transformer)
         return predictions
 
     def predict_every_timestep(self, episode: ProcessData):
@@ -227,8 +244,9 @@ class Rudder:
                     last_rewards.append(episode.rewards[-1].item())
                     # assert episode.returnn==self.replay_buffer.fast_returns[episodes_ids[i]]
                     qualities_bools.add(quality>0)
-                    qualities.append(np.clip(quality,0,1))
+                    qualities.append(np.clip(quality,0.0,0.25))
             self.current_quality=np.mean(qualities)
+            # self.current_quality = 0.25
             print("sample {} return {:.2f} loss {:.6f}".format(episodes_ids[-1], episode.returnn, episode.loss))
             if False not in qualities_bools:
                 bad_quality = False

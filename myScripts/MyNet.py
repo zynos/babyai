@@ -13,7 +13,10 @@ class Net(nn.Module):
         self.rudder_lstm_out = 128
         self.word_embedding = nn.Embedding(obs_space["instr"], self.instr_dim)
         self.compressed_embedding = 128
-        self.combined_input_dim = action_space.n + self.compressed_embedding + instr_dim + image_dim
+        # self.combined_input_dim = action_space.n + self.compressed_embedding + instr_dim + image_dim
+        # embed only
+        self.combined_input_dim = action_space.n + ac_embed_dim
+
         self.embedding_reducer = nn.Linear(ac_embed_dim, self.compressed_embedding)
 
         self.linear_out = nn.Linear(self.rudder_lstm_out, 1)
@@ -23,7 +26,7 @@ class Net(nn.Module):
             bidirectional=False)
 
         encoder_layer = nn.TransformerEncoderLayer(d_model=self.combined_input_dim, nhead=1)
-        self.transformer_input_encoder = nn.TransformerEncoder(encoder_layer, num_layers=6)
+        self.transformer_input_encoder = nn.TransformerEncoder(encoder_layer, num_layers=2)
         encoder_layer = nn.TransformerEncoderLayer(d_model=self.combined_input_dim * 2, nhead=1)
         self.transformer_combined_encoder = nn.TransformerEncoder(encoder_layer, num_layers=6)
         self.fc_out_trans = torch.nn.Linear(self.combined_input_dim, 1)
@@ -91,7 +94,9 @@ class Net(nn.Module):
             image = self.image_conv(image).squeeze(2).squeeze(2)
             instruction = self.instr_rnn(self.word_embedding(instruction))[1][-1]
             action = torch.nn.functional.one_hot(action, num_classes=self.action_space).float()
-            x = torch.cat([image, instruction, action, embedding], dim=-1).unsqueeze(0)
+            # x = torch.cat([image, instruction, action, embedding], dim=-1).unsqueeze(0)
+            #embedding only
+            x = torch.cat([action, embedding], dim=-1).unsqueeze(0)
         else:
             image = self.image_conv(image).squeeze(2).squeeze(2).unsqueeze(0)
             instruction = self.instr_rnn(self.word_embedding(instruction))[1][-1].unsqueeze(0)
@@ -113,8 +118,10 @@ class Net(nn.Module):
 
             # out=self.transformer_combined_encoder(comb)
 
-            out = self.fc_out_trans(x.squeeze(1))
-            return out, None
+            x = self.fc_out_trans(x.squeeze(1))
+            if not x.ndim == 3:
+                x = x.unsqueeze(0)
+            return x, None
         else:
             if not hidden:
                 x, hidden = self.lstm(x)

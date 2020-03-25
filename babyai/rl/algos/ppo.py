@@ -117,6 +117,8 @@ class PPOAlgo(BaseAlgo):
                         surr1 = (rudder_value - sb.rudder_return).pow(2)
                         surr2 = (rudder_value_clipped - sb.rudder_return).pow(2)
                         rudder_value_loss = torch.max(surr1, surr2).mean()
+                        # unclipped loss
+                        # rudder_value_loss = (rudder_value - sb.rudder_return).pow(2).mean()
 
                         combined_value_loss = value_loss + rudder_value_loss*self.rudder.current_quality
                         value_loss = combined_value_loss
