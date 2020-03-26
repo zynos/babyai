@@ -24,7 +24,7 @@ class ProcessData():
         self.instructions.append(instruction)
 
     def get_timestep_data(self, timestep):
-        dummy=ProcessData()
+        dummy = ProcessData()
         dummy.rewards.append(self.rewards[timestep])
         dummy.actions.append(self.actions[timestep])
         dummy.dones.append(self.dones[timestep])
@@ -32,7 +32,6 @@ class ProcessData():
         dummy.images.append(self.images[timestep])
         dummy.instructions.append(self.instructions[timestep])
         return dummy
-
 
         # return {key: value[timestep] for key, value in self.__dict__.items()
         #         if not key.startswith('__') and not callable(key)}
@@ -84,6 +83,8 @@ class ReplayBuffer:
 
         self.fast_returns = np.zeros(self.max_size)
         self.fast_losses = np.zeros(self.max_size)
+        self.process_queue = [[] for _ in range(nr_procs)]
+        self.current_predictions = [[] for _ in range(nr_procs)]
 
     def get_cloned_copy(self):
         instance = ReplayBuffer(self.nr_procs, self.embed_dim, self.device)
@@ -163,13 +164,16 @@ class ReplayBuffer:
                 # self.proc_data_buffer[proc_id] = ProcessData()
         # print("complete episodes",len(complete_episodes))
         # self.proc_data_buffer_for_prediction=deepcopy(self.proc_data_buffer)
-        self.procs_to_init=procs_to_init
+        self.procs_to_init = procs_to_init
         # self.init_process_data(procs_to_init)
         # del data_list
         return complete_episodes
 
-    def init_process_data(self, procs_to_init):
+    def init_process_data(self, procs_to_init, timestep):
         for p_id in procs_to_init:
+            self.proc_data_buffer[p_id].end_timestep = timestep
+            assert self.proc_data_buffer[p_id].dones[-1] == True
+            self.process_queue[p_id].append(self.proc_data_buffer[p_id])
             # self.proc_data_buffer[p_id].self_destroy()
             self.proc_data_buffer[p_id] = None
             self.proc_data_buffer[p_id] = ProcessData()
