@@ -12,6 +12,7 @@ from torch.nn.utils import clip_grad_value_
 
 class Rudder:
     def __init__(self, mem_dim, nr_procs, obs_space, instr_dim, ac_embed_dim, image_dim, action_space, device):
+        self.nr_procs = nr_procs
         self.use_transformer = False
         self.clip_value = 0.5
         self.replay_buffer = ReplayBuffer(nr_procs, ac_embed_dim, device)
@@ -19,7 +20,7 @@ class Rudder:
         self.net = Net(image_dim, obs_space, instr_dim, ac_embed_dim, action_space).to(device)
         self.optimizer = torch.optim.Adam(self.net.parameters(), lr=1e-4, weight_decay=1e-5)
         # self.optimizer = torch.optim.Adam(self.net.parameters())
-
+        self.frames_per_proc = 40
         self.device = device
         self.first_training_done = False
         self.mu = 20
@@ -28,7 +29,7 @@ class Rudder:
         # For the first timestep we will take (0-predictions[:, :1]) as redistributed reward
         self.last_predicted_reward = [None] * nr_procs
         self.parallel_train_done = False
-        self.current_quality=0
+        self.current_quality = 0
         # mpl = mp.log_to_stderr()
         # mpl.setLevel(logging.INFO)
         self.updates = 0
@@ -41,7 +42,7 @@ class Rudder:
         quality = 1 - (np.abs(diff.item()) / self.mu) * 1 / (1 - self.quality_threshold)
         return quality
 
-    def paper_loss3(self,predictions, returns,rewards):
+    def paper_loss3(self, predictions, returns, rewards):
 
         diff = predictions[:, -1] - returns
         # Main task: predicting return at last timestep
@@ -98,7 +99,7 @@ class Rudder:
 
     def get_transformer_prediction(self, proc_id, data, done):
         episode = self.replay_buffer.proc_data_buffer[proc_id]
-        pred, _ = self.net(episode, None, True,True)
+        pred, _ = self.net(episode, None, True, True)
         # print(pred)
         pred = pred[-1][-1][-1]
         # try:
@@ -120,6 +121,86 @@ class Rudder:
             # self.last_hidden[proc_id] = hidden
         return pred_reward
 
+    def predict_episodes_per_pID(self, episodes, proc_id):
+        current_ts = 0
+        end_pred = []
+        for e in episodes:
+            current_ts = e.end_timestep
+            pred, _ = self.net(e, None, not self.train_timesteps)
+            pred = pred[-1].squeeze(1)[-current_ts:]
+            end_pred.append(pred)
+        if current_ts - self.frames_per_proc - 1 != 0:
+            # one unfinished episode in proc buffer
+            episode = self.replay_buffer.proc_data_buffer[proc_id]
+            pred, _ = self.net(episode, None, not self.train_timesteps)
+            pred = pred[-1].squeeze(1)
+            end_pred.append(pred)
+        return torch.cat(end_pred, dim=-1)
+
+    # def new_predict_reward(self):
+    #     all_predictions=[]
+    #     for proc_id in range(self.nr_procs):
+    #         episodes = self.replay_buffer.process_queue[proc_id]
+    #         if episodes:
+    #             full_pred = self.predict_episodes_per_pID(episodes, proc_id)
+    #             self.replay_buffer.process_queue[proc_id] = []
+    #             all_predictions.append(full_pred)
+    #         else:
+    #             episode = self.replay_buffer.proc_data_buffer[proc_id]
+    #             pred=self.predict_full_episode(episode)
+    #             pred=pred[-1].squeeze(1)[-self.frames_per_proc:]
+    #             all_predictions.append(pred)
+    #     return all_predictions
+    #
+    def do_part_prediction(self, proc_id, timestep):
+        with torch.no_grad():
+            episode = self.replay_buffer.proc_data_buffer[proc_id]
+            pred = self.predict_full_episode(episode)
+            episode_len = len(episode.dones)
+            to_add = min(episode_len, timestep+1)
+            previous_pred=None
+            # might be out of range
+            try:
+                previous_pred= pred.squeeze()[-(to_add+1)]
+            except:
+                pass
+            pred = pred.squeeze()[-to_add:]
+            # we need to get the differences
+            if episode_len <= timestep+1:
+                # full episode is in this slot of frames
+                previous = torch.zeros(pred.shape, device=self.device)
+                previous[1:] = pred[:-1]
+                pred[0] = 0 - pred[0]
+                pred -= previous
+            if episode_len > timestep+1:
+                previous = torch.zeros(pred.shape, device=self.device)
+                previous[1:] = pred[:-1]
+                pred[0] = previous_pred - pred[0]
+                pred -= previous
+
+            self.replay_buffer.current_predictions[proc_id].append(pred)
+
+    def new_predict_reward(self, dones, timestep):
+        for i, done in enumerate(dones):
+            if done and timestep != self.frames_per_proc - 1:
+                self.do_part_prediction(i, timestep)
+            if timestep == self.frames_per_proc - 1:
+                self.do_part_prediction(i, timestep)
+
+        if timestep == self.frames_per_proc - 1:
+            # output shape = (self.num_frames_per_proc, self.num_procs)
+            all_frames = []
+            for proc_id, _ in enumerate(dones):
+                all_frames.append(torch.cat(self.replay_buffer.current_predictions[proc_id], dim=-1))
+                self.replay_buffer.current_predictions[proc_id] = []
+            # the first time we have incoplete episodes as an input
+            # which started before training was done so stack will fail if not all records are complete
+            try:
+                ret = torch.stack(all_frames)
+            except:
+                ret = None
+            return ret
+
     def predict_reward(self, embeddings, actions, rewards, dones, instructions, images):
         predictions = []
         batch = not self.train_timesteps
@@ -134,7 +215,7 @@ class Rudder:
         return torch.stack(predictions).squeeze()
 
     def predict_full_episode(self, episode: ProcessData):
-        predictions, hidden = self.net(episode, None, True,self.use_transformer)
+        predictions, hidden = self.net(episode, None, True, self.use_transformer)
         return predictions
 
     def predict_every_timestep(self, episode: ProcessData):
@@ -231,7 +312,7 @@ class Rudder:
         bad_quality = True
         while bad_quality:
             qualities_bools = set()
-            qualities=[]
+            qualities = []
             for epoch in range(5):
                 episodes, episodes_ids = self.replay_buffer.sample_episodes()
                 # episodes = self.replay_buffer.sample_episodes()
@@ -243,9 +324,9 @@ class Rudder:
                     losses.append(episode.loss)
                     last_rewards.append(episode.rewards[-1].item())
                     # assert episode.returnn==self.replay_buffer.fast_returns[episodes_ids[i]]
-                    qualities_bools.add(quality>0)
-                    qualities.append(np.clip(quality,0.0,0.25))
-            self.current_quality=np.mean(qualities)
+                    qualities_bools.add(quality > 0)
+                    qualities.append(np.clip(quality, 0.0, 0.25))
+            self.current_quality = np.mean(qualities)
             # self.current_quality = 0.25
             print("sample {} return {:.2f} loss {:.6f}".format(episodes_ids[-1], episode.returnn, episode.loss))
             if False not in qualities_bools:

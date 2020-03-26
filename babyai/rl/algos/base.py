@@ -148,18 +148,22 @@ class BaseAlgo(ABC):
         # if update_nr == 6 and i == 14:
         #     print("d")
         # #
-        if self.rudder.replay_buffer.buffer_full() and self.rudder.replay_buffer.encountered_different_returns() and i ==39:
+        if self.rudder.first_training_done:
+            # print(i,image.shape)
+            #     ret=self.rudder.predict_reward(embedding, action, rewards, done,
+            #                                                  instr,
+            #                                                  image)
+            ret = self.rudder.new_predict_reward(done, i)
+            if ret is not None:
+                self.rudder_rewards = ret.transpose(0,1)
+        if self.rudder.replay_buffer.buffer_full() and self.rudder.replay_buffer.encountered_different_returns() and i == 39:
             rudder_loss, last_ts_pred, full_pred = self.rudder.train_full_buffer()
             self.rudder.first_training_done = True
             print('non zero returns', np.count_nonzero(self.rudder.replay_buffer.fast_returns))
-        if self.rudder.first_training_done:
-        # print(i,image.shape)
-            ret=self.rudder.predict_reward(embedding, action, rewards, done,
-                                                         instr,
-                                                         image)
+
             # print(ret)
-            self.rudder_rewards[i] = ret
-        self.rudder.replay_buffer.init_process_data(self.rudder.replay_buffer.procs_to_init)
+            # self.rudder_rewards[i] = ret
+        self.rudder.replay_buffer.init_process_data(self.rudder.replay_buffer.procs_to_init, i)
         #     # print("rudder rewards")
 
         ### ASYNCHRONOUS
@@ -246,7 +250,7 @@ class BaseAlgo(ABC):
             self.mask = 1 - torch.tensor(done, device=self.device, dtype=torch.float)
             self.actions[i] = action
             self.values[i] = value
-            self.rudder_values[i]=rudder_value
+            self.rudder_values[i] = rudder_value
             if self.reshape_reward is not None:
                 self.rewards[i] = torch.tensor([
                     self.reshape_reward(obs_, action_, reward_, done_)
@@ -302,9 +306,11 @@ class BaseAlgo(ABC):
             next_advantage = self.advantages[i + 1] if i < self.num_frames_per_proc - 1 else 0
             next_rudder_advantage = self.rudder_advantages[i + 1] if i < self.num_frames_per_proc - 1 else 0
             delta = self.rewards[i] + self.discount * next_value * next_mask - self.values[i]
-            rudder_delta = self.rudder_rewards[i] + self.discount * next_rudder_value * next_mask - self.rudder_values[i]
+            rudder_delta = self.rudder_rewards[i] + self.discount * next_rudder_value * next_mask - self.rudder_values[
+                i]
             self.advantages[i] = delta + self.discount * self.gae_lambda * next_advantage * next_mask
-            self.rudder_advantages[i] = rudder_delta + self.discount * self.gae_lambda * next_rudder_advantage * next_mask
+            self.rudder_advantages[
+                i] = rudder_delta + self.discount * self.gae_lambda * next_rudder_advantage * next_mask
 
         # Flatten the data correctly, making sure that
         # each episode's data is a continuous chunk
@@ -330,7 +336,8 @@ class BaseAlgo(ABC):
         exps.rudder_advantage = self.rudder_advantages.transpose(0, 1).reshape(-1)
         # a =a_o(1-qualityv) +a_r * quality
         if self.use_rudder:
-            exps.advantage = exps.advantage*(1-self.rudder.current_quality)+exps.rudder_advantage*self.rudder.current_quality
+            exps.advantage = exps.advantage * (
+                        1 - self.rudder.current_quality) + exps.rudder_advantage * self.rudder.current_quality
         exps.returnn = exps.value + exps.advantage
         exps.rudder_return = exps.rudder_value + exps.rudder_advantage
         exps.log_prob = self.log_probs.transpose(0, 1).reshape(-1)
@@ -352,9 +359,9 @@ class BaseAlgo(ABC):
             "num_frames_per_episode": self.log_num_frames[-keep:],
             "num_frames": self.num_frames,
             "episodes_done": self.log_done_counter,
-            "rudder_loss":rudder_loss,
-                "rudder_pred_last":last_ts_pred,
-        "LastRew_mean":last_rew_mean,
+            "rudder_loss": rudder_loss,
+            "rudder_pred_last": last_ts_pred,
+            "LastRew_mean": last_rew_mean,
         }
 
         self.log_done_counter = 0
