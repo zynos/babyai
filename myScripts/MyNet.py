@@ -44,7 +44,7 @@ class Net(nn.Module):
         self.compressed_embedding = 128
         # self.combined_input_dim = action_space.n + self.compressed_embedding + instr_dim + image_dim
         # embed only
-        self.combined_input_dim = action_space.n + ac_embed_dim*2
+        self.combined_input_dim = action_space.n + ac_embed_dim
 
         self.embedding_reducer = nn.Linear(ac_embed_dim, self.compressed_embedding)
         self.film_pool = nn.MaxPool2d(kernel_size=(2, 2), stride=2)
@@ -59,13 +59,13 @@ class Net(nn.Module):
         for ni in range(num_module):
             if ni < num_module - 1:
                 mod = ExpertControllerFiLM(
-                    in_features=self.instr_dim,
+                    in_features=self.instr_dim+ac_embed_dim,
                     out_features=128, in_channels=128, imm_channels=128)
             else:
                 mod = ExpertControllerFiLM(
-                    in_features=self.instr_dim, out_features=self.image_dim,
+                    in_features=self.instr_dim+ac_embed_dim, out_features=self.image_dim,
                     in_channels=128, imm_channels=128)
-            self.controllers.append(mod.cuda())
+            self.controllers.append(mod)
 
         encoder_layer = nn.TransformerEncoderLayer(d_model=self.combined_input_dim, nhead=1)
         self.transformer_input_encoder = nn.TransformerEncoder(encoder_layer, num_layers=2)
@@ -146,15 +146,16 @@ class Net(nn.Module):
         if batch:
             # image = self.image_conv(image).squeeze(2).squeeze(2)
             instruction = self.instr_rnn(self.word_embedding(instruction))[1][-1]
+            overloaded = torch.cat([instruction,embedding],dim=-1)
             x = self.image_conv(image)
             for controler in self.controllers:
-                x = controler(x, instruction)
+                x = controler(x, overloaded)
             x = F.relu(self.film_pool(x))
             x=x.squeeze(2).squeeze(2)
             action = torch.nn.functional.one_hot(action, num_classes=self.action_space).float()
             # x = torch.cat([image, instruction, action, embedding], dim=-1).unsqueeze(0)
             #embedding only
-            x = torch.cat([x,action, embedding], dim=-1).unsqueeze(0)
+            x = torch.cat([x,action], dim=-1).unsqueeze(0)
         else:
             image = self.image_conv(image).squeeze(2).squeeze(2).unsqueeze(0)
             instruction = self.instr_rnn(self.word_embedding(instruction))[1][-1].unsqueeze(0)
