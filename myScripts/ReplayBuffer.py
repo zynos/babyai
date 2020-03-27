@@ -61,8 +61,9 @@ class ProcessData():
 
 
 class ReplayBuffer:
-    def __init__(self, nr_procs, embed_dim, device):
+    def __init__(self, nr_procs, embed_dim, device,frames_per_proc):
         self.max_steps = 128
+        self.frames_per_proc = frames_per_proc
         self.embed_dim = embed_dim
         self.device = device
         self.sample_amount = 8
@@ -83,8 +84,9 @@ class ReplayBuffer:
 
         self.fast_returns = np.zeros(self.max_size)
         self.fast_losses = np.zeros(self.max_size)
-        self.process_queue = [[] for _ in range(nr_procs)]
+        # self.process_queue = [[] for _ in range(nr_procs)]
         self.current_predictions = [[] for _ in range(nr_procs)]
+        # self.current_predictions = torch.zeros((self.nr_procs,self.frames_per_proc))
 
     def get_cloned_copy(self):
         instance = ReplayBuffer(self.nr_procs, self.embed_dim, self.device)
@@ -173,7 +175,7 @@ class ReplayBuffer:
         for p_id in procs_to_init:
             self.proc_data_buffer[p_id].end_timestep = timestep
             assert self.proc_data_buffer[p_id].dones[-1] == True
-            self.process_queue[p_id].append(self.proc_data_buffer[p_id])
+            # self.process_queue[p_id].append(self.proc_data_buffer[p_id])
             # self.proc_data_buffer[p_id].self_destroy()
             self.proc_data_buffer[p_id] = None
             self.proc_data_buffer[p_id] = ProcessData()

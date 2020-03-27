@@ -15,12 +15,12 @@ class Rudder:
         self.nr_procs = nr_procs
         self.use_transformer = False
         self.clip_value = 0.5
-        self.replay_buffer = ReplayBuffer(nr_procs, ac_embed_dim, device)
+        self.frames_per_proc = 40
+        self.replay_buffer = ReplayBuffer(nr_procs, ac_embed_dim, device,self.frames_per_proc)
         self.train_timesteps = False
         self.net = Net(image_dim, obs_space, instr_dim, ac_embed_dim, action_space).to(device)
         self.optimizer = torch.optim.Adam(self.net.parameters(), lr=1e-4, weight_decay=1e-5)
         # self.optimizer = torch.optim.Adam(self.net.parameters())
-        self.frames_per_proc = 40
         self.device = device
         self.first_training_done = False
         self.mu = 20
@@ -164,7 +164,11 @@ class Rudder:
                 previous_pred= pred.squeeze()[-(to_add+1)]
             except:
                 pass
-            pred = pred.squeeze()[-to_add:]
+            # single dimension
+            try:
+                pred = pred.squeeze()[-to_add:]
+            except IndexError:
+                pred = pred.squeeze().unsqueeze(0)
             # we need to get the differences
             if episode_len <= timestep+1:
                 # full episode is in this slot of frames
@@ -178,7 +182,7 @@ class Rudder:
                 pred[0] = previous_pred - pred[0]
                 pred -= previous
 
-            self.replay_buffer.current_predictions[proc_id].append(pred)
+            self.replay_buffer.current_predictions[proc_id].append(pred.detach().clone())
 
     def new_predict_reward(self, dones, timestep):
         for i, done in enumerate(dones):
@@ -325,7 +329,7 @@ class Rudder:
                     last_rewards.append(episode.rewards[-1].item())
                     # assert episode.returnn==self.replay_buffer.fast_returns[episodes_ids[i]]
                     qualities_bools.add(quality > 0)
-                    qualities.append(np.clip(quality, 0.0, 0.25))
+                    qualities.append(np.clip(quality, 0.0, 1.0))
             self.current_quality = np.mean(qualities)
             # self.current_quality = 0.25
             print("sample {} return {:.2f} loss {:.6f}".format(episodes_ids[-1], episode.returnn, episode.loss))
