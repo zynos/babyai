@@ -16,7 +16,7 @@ class Rudder:
         self.use_transformer = False
         self.clip_value = 0.5
         self.frames_per_proc = 40
-        self.replay_buffer = ReplayBuffer(nr_procs, ac_embed_dim, device,self.frames_per_proc)
+        self.replay_buffer = ReplayBuffer(nr_procs, ac_embed_dim, device, self.frames_per_proc)
         self.train_timesteps = False
         self.net = Net(image_dim, obs_space, instr_dim, ac_embed_dim, action_space).to(device)
         self.optimizer = torch.optim.Adam(self.net.parameters(), lr=1e-4, weight_decay=1e-5)
@@ -153,15 +153,24 @@ class Rudder:
     #     return all_predictions
     #
     def do_part_prediction(self, proc_id, timestep):
+        def calc_prediction_differences(pred, previous_pred):
+            previous = torch.zeros(pred.shape, device=self.device)
+            previous[1:] = pred[:-1]
+            pred[0] = previous_pred - pred[0]
+            pred -= previous
+            return pred
+
         with torch.no_grad():
             episode = self.replay_buffer.proc_data_buffer[proc_id]
             pred = self.predict_full_episode(episode)
             episode_len = len(episode.dones)
-            to_add = min(episode_len, timestep+1)
-            previous_pred=None
+            to_add = min(episode_len, timestep + 1)
+            previous_pred = None
+            if self.replay_buffer.current_predictions[proc_id]:
+                print("debug")
             # might be out of range
             try:
-                previous_pred= pred.squeeze()[-(to_add+1)]
+                previous_pred = pred.squeeze()[-(to_add + 1)]
             except:
                 pass
             # single dimension
@@ -170,26 +179,21 @@ class Rudder:
             except IndexError:
                 pred = pred.squeeze().unsqueeze(0)
             # we need to get the differences
-            if episode_len <= timestep+1:
+            if episode_len <= timestep + 1:
                 # full episode is in this slot of frames
-                previous = torch.zeros(pred.shape, device=self.device)
-                previous[1:] = pred[:-1]
-                pred[0] = 0 - pred[0]
-                pred -= previous
-            if episode_len > timestep+1:
-                previous = torch.zeros(pred.shape, device=self.device)
-                previous[1:] = pred[:-1]
-                pred[0] = previous_pred - pred[0]
-                pred -= previous
+                previous_pred = 0.0
+                pred = calc_prediction_differences(pred, previous_pred)
+            if episode_len > timestep + 1:
+                pred = calc_prediction_differences(pred, previous_pred)
 
             self.replay_buffer.current_predictions[proc_id].append(pred.detach().clone())
 
     def new_predict_reward(self, dones, timestep):
-        for i, done in enumerate(dones):
+        for proc_id, done in enumerate(dones):
             if done and timestep != self.frames_per_proc - 1:
-                self.do_part_prediction(i, timestep)
+                self.do_part_prediction(proc_id, timestep)
             if timestep == self.frames_per_proc - 1:
-                self.do_part_prediction(i, timestep)
+                self.do_part_prediction(proc_id, timestep)
 
         if timestep == self.frames_per_proc - 1:
             # output shape = (self.num_frames_per_proc, self.num_procs)
@@ -245,14 +249,18 @@ class Rudder:
 
         return loss, returns, quality
 
+    def calc_loss_and_quality(self, episode, predictions):
+        returns = torch.sum(episode.rewards, dim=-1)
+        # returns = np.sum(episode.rewards)
+        loss, quality = self.lossfunction(predictions, returns)
+        return loss, returns, quality
+
     def feed_network(self, episode: ProcessData):
         if self.train_timesteps:
             predictions = self.predict_every_timestep(episode)
         else:
             predictions = self.predict_full_episode(episode)
-        returns = torch.sum(episode.rewards, dim=-1)
-        # returns = np.sum(episode.rewards)
-        loss, quality = self.lossfunction(predictions, returns)
+        loss, returns, quality = self.calc_loss_and_quality(episode, predictions)
 
         return loss, returns, quality, predictions.detach().clone()
 
@@ -285,6 +293,21 @@ class Rudder:
         quality = 0.1
         return quality
 
+    def do_optimization(self, loss):
+        loss.backward()
+        clip_grad_value_(self.net.parameters(), self.clip_value)
+        self.optimizer.step()
+        self.optimizer.zero_grad()
+        return loss.detach().item()
+
+    def update_episode_and_fast_stats(self, returns, loss, episode, episode_id):
+        returnn = returns.detach().item()
+        # print("Loss",loss)
+        episode.loss = loss
+        episode.returnn = returnn
+        self.replay_buffer.fast_losses[episode_id] = loss
+        return episode
+
     def train_and_set_metrics(self, episode, episode_id):
         # loss, returnn, quality = self.train_one_episode(episode)
         loss, returns, quality, predictions = self.feed_network(episode)
@@ -293,19 +316,33 @@ class Rudder:
         # with amp.scale_loss(loss, self.optimizer) as scaled_loss:
         #     scaled_loss.backward()
         ###
-        loss.backward()
-        clip_grad_value_(self.net.parameters(), self.clip_value)
-        self.optimizer.step()
-        self.optimizer.zero_grad()
+        loss = self.do_optimization(loss)
+        episode = self.update_episode_and_fast_stats(returns, loss, episode, episode_id)
 
-        loss = loss.detach().item()
-        returnn = returns.detach().item()
-        # print("Loss",loss)
-        episode.loss = loss
-        episode.returnn = returnn
-        self.replay_buffer.fast_losses[episode_id] = loss
         # print("loss", loss)
         return quality, predictions
+
+    def train_parallel(self, episodes, episode_ids):
+        losses = []
+        full_predictions = []
+        last_timestep_prediction = []
+        last_rewards = []
+        qualities_bools = set()
+        qualities = []
+
+        pred, _ = self.net(episodes, None, True)
+        for i, p in enumerate(pred):
+            loss, returns, quality = self.calc_loss_and_quality(episodes[i], p)
+            loss = self.do_optimization(loss)
+            episode = self.update_episode_and_fast_stats(returns, loss, episodes[i], episode_ids[i])
+            full_predictions.append(predictions.unsqueeze(0))
+            last_timestep_prediction.append(predictions[0][-1].item())
+            losses.append(episode.loss)
+            last_rewards.append(episode.rewards[-1].item())
+            # assert episode.returnn==self.replay_buffer.fast_returns[episodes_ids[i]]
+            qualities_bools.add(quality > 0)
+            qualities.append(np.clip(quality, 0.0, 1.0))
+        return losses, full_predictions, last_timestep_prediction, last_rewards, qualities_bools, qualities
 
     def train_full_buffer(self):
         # print("train_full_buffer")
@@ -319,6 +356,14 @@ class Rudder:
             qualities = []
             for epoch in range(5):
                 episodes, episodes_ids = self.replay_buffer.sample_episodes()
+                losses_, full_predictions_, last_timestep_prediction_, last_rewards_, qualities_bools_, qualities_ = \
+                losses.extend(losses_)
+                full_predictions.extend(full_predictions_)
+                last_timestep_prediction.extend(last_timestep_prediction_)
+                last_rewards.extend(last_rewards_)
+                qualities_bools.update(qualities_bools_)
+                qualities.extend(qualities_)
+                    self.train_parallel(episodes, episodes_ids)
                 # episodes = self.replay_buffer.sample_episodes()
                 for i, episode in enumerate(episodes):
                     quality, predictions = self.train_and_set_metrics(episode, episodes_ids[i])

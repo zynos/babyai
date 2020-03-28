@@ -44,7 +44,7 @@ class Net(nn.Module):
         self.compressed_embedding = 128
         # self.combined_input_dim = action_space.n + self.compressed_embedding + instr_dim + image_dim
         # embed only
-        self.combined_input_dim = action_space.n + ac_embed_dim
+        self.combined_input_dim = action_space.n + ac_embed_dim +instr_dim
 
         self.embedding_reducer = nn.Linear(ac_embed_dim, self.compressed_embedding)
         self.film_pool = nn.MaxPool2d(kernel_size=(2, 2), stride=2)
@@ -59,11 +59,11 @@ class Net(nn.Module):
         for ni in range(num_module):
             if ni < num_module - 1:
                 mod = ExpertControllerFiLM(
-                    in_features=self.instr_dim+ac_embed_dim,
+                    in_features=self.instr_dim,
                     out_features=128, in_channels=128, imm_channels=128)
             else:
                 mod = ExpertControllerFiLM(
-                    in_features=self.instr_dim+ac_embed_dim, out_features=self.image_dim,
+                    in_features=self.instr_dim, out_features=self.image_dim,
                     in_channels=128, imm_channels=128)
             self.controllers.append(mod)
 
@@ -133,6 +133,25 @@ class Net(nn.Module):
             image, instruction, action, embedding = self.extract_process_data(dic)
         return image, instruction, action, embedding
 
+    def film_and_action_forward(self,instruction,image,action):
+        instruction = self.instr_rnn(self.word_embedding(instruction))[1][-1]
+        x = self.image_conv(image)
+        for controler in self.controllers:
+            x = controler(x, instruction)
+        x = F.relu(self.film_pool(x))
+        x = x.squeeze(2).squeeze(2)
+        action = torch.nn.functional.one_hot(action, num_classes=self.action_space).float()
+        return x,action
+
+    def prepare_batch_input(self,image, instruction, action, embedding):
+        # image = self.image_conv(image).squeeze(2).squeeze(2)
+        # overloaded = torch.cat([instruction, embedding], dim=-1)
+        x,action = self.film_and_action_forward()
+        # x = torch.cat([image, instruction, action, embedding], dim=-1).unsqueeze(0)
+        # embedding only
+        x = torch.cat([x, embedding,action], dim=-1).unsqueeze(0)
+        return x
+
     def prepare_input(self, dic, batch, use_transformer):
         # if batch:
         #     image, instruction, action, embedding = self.extract_process_data(dic)
@@ -144,18 +163,7 @@ class Net(nn.Module):
         #     image, instruction, action, embedding = self.extract_dict_values(dic)
         image, instruction, action, embedding = self.extract_process_data(dic)
         if batch:
-            # image = self.image_conv(image).squeeze(2).squeeze(2)
-            instruction = self.instr_rnn(self.word_embedding(instruction))[1][-1]
-            overloaded = torch.cat([instruction,embedding],dim=-1)
-            x = self.image_conv(image)
-            for controler in self.controllers:
-                x = controler(x, overloaded)
-            x = F.relu(self.film_pool(x))
-            x=x.squeeze(2).squeeze(2)
-            action = torch.nn.functional.one_hot(action, num_classes=self.action_space).float()
-            # x = torch.cat([image, instruction, action, embedding], dim=-1).unsqueeze(0)
-            #embedding only
-            x = torch.cat([x,action], dim=-1).unsqueeze(0)
+            x=self.prepare_batch_input(image, instruction, action, embedding)
         else:
             image = self.image_conv(image).squeeze(2).squeeze(2).unsqueeze(0)
             instruction = self.instr_rnn(self.word_embedding(instruction))[1][-1].unsqueeze(0)
@@ -164,9 +172,34 @@ class Net(nn.Module):
             x = torch.cat([image, instruction, action, compressed_embedding], dim=-1)
         return x
 
+    def create_parallel_input(self,episodes):
+        film_out=[]
+        actions=[]
+        embeddings=[]
+        for episode in episodes:
+            image, instruction, action, embedding = self.extract_process_data(episode)
+            # images.append(image)
+            x,action = self.film_and_action_forward(instruction,image,action)
+            film_out.append(x)
+            # instructions.append(instruction)
+            actions.append(action)
+            embeddings.append(embedding)
+        film_out=torch.nn.utils.rnn.pad_sequence(film_out,True)
+        # instructions = torch.nn.utils.rnn.pad_sequence(instructions, True)
+        actions = torch.nn.utils.rnn.pad_sequence(actions, True)
+        embeddings = torch.nn.utils.rnn.pad_sequence(embeddings, True)
+
+        x = torch.cat([film_out, embeddings, actions], dim=-1)
+        # embedding only
+        return x
+
+
+
     def forward(self, dic, hidden, batch=False, use_transformer=False):
-        # use_trasnformer = True
-        x = self.prepare_input(dic, batch, use_transformer)
+        if isinstance(dic,list):
+            x = self.create_parallel_input(dic)
+        else:
+            x = self.prepare_input(dic, batch, use_transformer)
         batch_size = x.shape[0]
         # self.init_hidden(batch_size)
         if use_transformer:
