@@ -321,6 +321,7 @@ class Rudder:
                 episodes, episodes_ids = self.replay_buffer.sample_episodes()
                 # episodes = self.replay_buffer.sample_episodes()
                 for i, episode in enumerate(episodes):
+
                     quality, predictions = self.train_and_set_metrics(episode, episodes_ids[i])
                     # quality=self.train_and_set_metrics(episode)
                     full_predictions.append(predictions.unsqueeze(0))
