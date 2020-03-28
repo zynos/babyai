@@ -230,6 +230,7 @@ class BaseAlgo(ABC):
                 extra_predictions = model_results['extra_predictions']
                 embedding = model_results['embedding']
                 rudder_value = model_results['rudder_value']
+                logits =  model_results['logits']
 
             action = dist.sample()
             # print("checkpoint 5")
@@ -264,7 +265,7 @@ class BaseAlgo(ABC):
                 rudder_loss, last_ts_pred, last_rew_mean = \
                     self.update_rudder_and_rescale_rewards(update_nr, i, self.queue_into_rudder,
                                                            self.queue_back_from_rudder, embedding,
-                                                           action, self.rewards[i], done, preprocessed_obs.instr,
+                                                           logits, self.rewards[i], done, preprocessed_obs.instr,
                                                            preprocessed_obs.image)
 
             self.log_probs[i] = dist.log_prob(action)

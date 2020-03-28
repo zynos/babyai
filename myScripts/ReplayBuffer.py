@@ -79,7 +79,7 @@ class ReplayBuffer:
         self.images = torch.zeros((self.max_size, self.max_steps, 7, 7, 3)).to(device)
         self.instructions = torch.zeros((self.max_size, self.max_steps, 9), dtype=torch.int64).to(device)
         self.rewards = torch.zeros((self.max_size, self.max_steps)).to(device)
-        self.actions = torch.zeros((self.max_size, self.max_steps), dtype=torch.int64).to(device)
+        self.actions = torch.zeros((self.max_size, self.max_steps,7)).to(device)
         self.dones = np.zeros((self.max_size, self.max_steps), dtype=bool)
 
         self.fast_returns = np.zeros(self.max_size)

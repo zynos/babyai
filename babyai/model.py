@@ -254,7 +254,8 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
             extra_predictions = dict()
 
         x = self.actor(embedding)
-        dist = Categorical(logits=F.log_softmax(x, dim=1))
+        logits=F.log_softmax(x, dim=1)
+        dist = Categorical(logits=logits)
 
         x = self.critic(embedding)
         value = x.squeeze(1)
@@ -264,7 +265,7 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
         rudder_value = x.squeeze(1)
 
         return {'dist': dist, 'value': value, 'memory': memory, 'extra_predictions': extra_predictions,
-                "embedding":embedding, "rudder_value":rudder_value}
+                "embedding":embedding, "rudder_value":rudder_value,"logits":logits}
 
     def _get_instr_embedding(self, instr):
         if self.lang_model == 'gru':
