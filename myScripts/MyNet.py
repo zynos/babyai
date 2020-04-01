@@ -193,7 +193,7 @@ class Net(nn.Module):
             # else:
             #     x, hidden = self.lstm(x, hidden)
             x, hidden = self.lstm(x)
-            x = self.droput(x)
+            # x = self.droput(x)
             x = self.linear_out(x.squeeze(1))
             # if batch:
             #     x = x.squeeze(2)

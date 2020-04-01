@@ -159,7 +159,7 @@ class Rudder:
             episode_len = len(episode.dones)
             to_add = min(episode_len, timestep+1)
             previous_pred=None
-            # might be out of range
+            # might be out of range because frames per proc is smaller than episode len
             try:
                 previous_pred= pred.squeeze()[-(to_add+1)]
             except:
@@ -170,17 +170,14 @@ class Rudder:
             except IndexError:
                 pred = pred.squeeze().unsqueeze(0)
             # we need to get the differences
-            if episode_len <= timestep+1:
-                # full episode is in this slot of frames
-                previous = torch.zeros(pred.shape, device=self.device)
-                previous[1:] = pred[:-1]
+            previous = torch.zeros(pred.shape, device=self.device)
+            previous[1:] = pred[:-1]
+
+            if previous_pred is not None:
+                pred[0] = pred[0] - previous_pred
+            else:
                 pred[0] = 0 - pred[0]
-                pred -= previous
-            if episode_len > timestep+1:
-                previous = torch.zeros(pred.shape, device=self.device)
-                previous[1:] = pred[:-1]
-                pred[0] = previous_pred - pred[0]
-                pred -= previous
+            pred -= previous
 
             self.replay_buffer.current_predictions[proc_id].append(pred.detach().clone())
 
@@ -198,7 +195,7 @@ class Rudder:
             for proc_id, _ in enumerate(dones):
                 all_frames.append(torch.cat(self.replay_buffer.current_predictions[proc_id], dim=-1))
                 self.replay_buffer.current_predictions[proc_id] = []
-            # the first time we have incoplete episodes as an input
+            # the first time we have incomplete episodes as an input
             # which started before training was done so stack will fail if not all records are complete
             try:
                 ret = torch.stack(all_frames)
@@ -324,7 +321,6 @@ class Rudder:
                 episodes, episodes_ids = self.replay_buffer.sample_episodes()
                 # episodes = self.replay_buffer.sample_episodes()
                 for i, episode in enumerate(episodes):
-
                     quality, predictions = self.train_and_set_metrics(episode, episodes_ids[i])
                     # quality=self.train_and_set_metrics(episode)
                     full_predictions.append(predictions.unsqueeze(0))
