@@ -141,6 +141,7 @@ class BaseAlgo(ABC):
         rudder_loss, last_ts_pred, full_pred = 0.0, 0.0, 0.0
         debug = update_nr >= 6 and i >= 15
         debug = False
+        # rewards=rewards-10
         self.rudder.add_timestep_data(debug, queue_into_rudder, embedding, action, rewards, done,
                                       instr, image)
         # if debug:
@@ -265,7 +266,7 @@ class BaseAlgo(ABC):
                 rudder_loss, last_ts_pred, last_rew_mean = \
                     self.update_rudder_and_rescale_rewards(update_nr, i, self.queue_into_rudder,
                                                            self.queue_back_from_rudder, embedding,
-                                                           logits, self.rewards[i], done, preprocessed_obs.instr,
+                                                           action, self.rewards[i], done, preprocessed_obs.instr,
                                                            preprocessed_obs.image)
 
             self.log_probs[i] = dist.log_prob(action)

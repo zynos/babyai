@@ -18,8 +18,8 @@ class Rudder:
         self.frames_per_proc = 40
         self.replay_buffer = ReplayBuffer(nr_procs, ac_embed_dim, device,self.frames_per_proc)
         self.train_timesteps = False
-        self.net = Net(image_dim, obs_space, instr_dim, ac_embed_dim, action_space).to(device)
-        self.optimizer = torch.optim.Adam(self.net.parameters(), lr=1e-4, weight_decay=1e-5)
+        self.net = Net(image_dim, obs_space, instr_dim, ac_embed_dim, action_space,device).to(device)
+        self.optimizer = torch.optim.Adam(self.net.parameters(), lr=1e-4, weight_decay=1e-6)
         # self.optimizer = torch.optim.Adam(self.net.parameters())
         self.device = device
         self.first_training_done = False
@@ -185,6 +185,7 @@ class Rudder:
             self.replay_buffer.current_predictions[proc_id].append(pred.detach().clone())
 
     def new_predict_reward(self, dones, timestep):
+        self.net.eval()
         for i, done in enumerate(dones):
             if done and timestep != self.frames_per_proc - 1:
                 self.do_part_prediction(i, timestep)
@@ -257,6 +258,7 @@ class Rudder:
         return loss, returns, quality, predictions.detach().clone()
 
     def inference_and_set_metrics(self, episode: ProcessData):
+        self.net.eval()
         with torch.no_grad():
             # in train and set metrics rewards are a tensor
 
@@ -309,6 +311,7 @@ class Rudder:
 
     def train_full_buffer(self):
         # print("train_full_buffer")
+        self.net.train()
         losses = []
         full_predictions = []
         last_timestep_prediction = []
@@ -330,10 +333,12 @@ class Rudder:
                     last_rewards.append(episode.rewards[-1].item())
                     # assert episode.returnn==self.replay_buffer.fast_returns[episodes_ids[i]]
                     qualities_bools.add(quality > 0)
-                    qualities.append(np.clip(quality, 0.0, 1.0))
+                    qualities.append(np.clip(quality, 0.0, 0.25))
             self.current_quality = np.mean(qualities)
             # self.current_quality = 0.25
             print("sample {} return {:.2f} loss {:.6f}".format(episodes_ids[-1], episode.returnn, episode.loss))
+            print("pred",predictions.mean().item(),predictions[-1][-1][-1].item())
+            print("rewards",episode.rewards.mean().item(),episode.rewards[-1].item())
             if False not in qualities_bools:
                 bad_quality = False
         # full_predictions = torch.cat(full_predictions, dim=-1)

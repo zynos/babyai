@@ -1,8 +1,9 @@
 import torch
-from torch import nn
 import torch.nn.functional as F
+import torch.nn as nn
+from torch.nn import LSTMCell
 
-# from widis_lstm_tools.nn import LSTMLayer
+from widis_lstm_tools.nn import LSTMLayer
 
 def initialize_parameters(m):
     classname = m.__class__.__name__
@@ -33,9 +34,10 @@ class ExpertControllerFiLM(nn.Module):
         return out
 
 class Net(nn.Module):
-    def __init__(self, image_dim, obs_space, instr_dim, ac_embed_dim, action_space):
+    def __init__(self, image_dim, obs_space, instr_dim, ac_embed_dim, action_space,device):
         super(Net, self).__init__()
         self.action_space = action_space.n
+        self.device=device
         self.image_dim = image_dim
         self.instr_dim = instr_dim
         self.ac_embed_dim = ac_embed_dim
@@ -65,7 +67,7 @@ class Net(nn.Module):
                 mod = ExpertControllerFiLM(
                     in_features=self.instr_dim, out_features=self.image_dim,
                     in_channels=128, imm_channels=128)
-            self.controllers.append(mod)
+            self.controllers.append(mod.to(self.device))
 
         encoder_layer = nn.TransformerEncoderLayer(d_model=self.combined_input_dim, nhead=1)
         self.transformer_input_encoder = nn.TransformerEncoder(encoder_layer, num_layers=2)
@@ -94,8 +96,10 @@ class Net(nn.Module):
             nn.MaxPool2d(kernel_size=(2, 2), stride=2)
         )
         self.lstm = nn.LSTM(self.combined_input_dim, self.rudder_lstm_out, batch_first=True)
+        self.droput = nn.Dropout(p=0.25)
 
-        # self.widi_lstm = LSTMLayer(
+
+        # self.lstm = LSTMLayer(
         #     in_features=self.combined_input_dim, out_features=self.rudder_lstm_out, inputformat='NLC',
         #     # cell input: initialize weights to forward inputs with xavier, disable connections to recurrent inputs
         #     w_ci=(torch.nn.init.xavier_normal_, False),
@@ -152,11 +156,11 @@ class Net(nn.Module):
                 x = controler(x, instruction)
             x = F.relu(self.film_pool(x))
             x=x.squeeze(2).squeeze(2)
-            # action = torch.nn.functional.one_hot(action, num_classes=self.action_space).float()
+            action = torch.nn.functional.one_hot(action, num_classes=self.action_space).float()
             # x = torch.cat([image, instruction, action, embedding], dim=-1).unsqueeze(0)
             #embedding only
             # approx_time = torch.ones((x.shape[0],1)) * x.shape[0]
-            approx_time = torch.linspace(0,1,self.max_timesteps)[:x.shape[0]].unsqueeze(1)
+            approx_time = torch.linspace(0,1,self.max_timesteps,device=self.device)[:x.shape[0]].unsqueeze(1)
             x = torch.cat([x,embedding,action,approx_time], dim=-1).unsqueeze(0)
         else:
             image = self.image_conv(image).squeeze(2).squeeze(2).unsqueeze(0)
@@ -184,10 +188,12 @@ class Net(nn.Module):
                 x = x.unsqueeze(0)
             return x, None
         else:
-            if not hidden:
-                x, hidden = self.lstm(x)
-            else:
-                x, hidden = self.lstm(x, hidden)
+            # if not hidden:
+            #     x, hidden = self.lstm(x)
+            # else:
+            #     x, hidden = self.lstm(x, hidden)
+            x, hidden = self.lstm(x)
+            x = self.droput(x)
             x = self.linear_out(x.squeeze(1))
             # if batch:
             #     x = x.squeeze(2)
