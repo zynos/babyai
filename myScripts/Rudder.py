@@ -169,15 +169,16 @@ class Rudder:
                 pred = pred.squeeze()[-to_add:]
             except IndexError:
                 pred = pred.squeeze().unsqueeze(0)
-            # we need to get the differences
-            previous = torch.zeros(pred.shape, device=self.device)
-            previous[1:] = pred[:-1]
+            # we need to get the differences to previous timestep predictions
+            previous_timesteps = torch.zeros(pred.shape, device=self.device)
+            # leave the first value at zero to not subtract anything from first prediction value
+            previous_timesteps[1:] = pred[:-1]
 
             if previous_pred is not None:
                 pred[0] = pred[0] - previous_pred
             else:
                 pred[0] = 0 - pred[0]
-            pred -= previous
+            pred -= previous_timesteps
 
             self.replay_buffer.current_predictions[proc_id].append(pred.detach().clone())
 
