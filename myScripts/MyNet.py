@@ -41,16 +41,17 @@ class Net(nn.Module):
         self.image_dim = image_dim
         self.instr_dim = instr_dim
         self.ac_embed_dim = ac_embed_dim
-        self.rudder_lstm_out = 128
         self.word_embedding = nn.Embedding(obs_space["instr"], self.instr_dim)
         self.compressed_embedding = 128
         # self.combined_input_dim = action_space.n + self.compressed_embedding + instr_dim + image_dim
         # embed only
         self.combined_input_dim = action_space.n + ac_embed_dim *2 +1
+        self.rudder_lstm_out = self.combined_input_dim
         self.max_timesteps=128
         self.embedding_reducer = nn.Linear(ac_embed_dim, self.compressed_embedding)
         self.film_pool = nn.MaxPool2d(kernel_size=(2, 2), stride=2)
         self.linear_out = nn.Linear(self.rudder_lstm_out, 1)
+        self.relu = nn.ReLU()
         self.instr_rnn = nn.GRU(
             self.instr_dim, self.instr_dim,
             batch_first=True,
@@ -194,6 +195,7 @@ class Net(nn.Module):
             #     x, hidden = self.lstm(x, hidden)
             x, hidden = self.lstm(x)
             # x = self.droput(x)
+            # x=self.relu(x)
             x = self.linear_out(x.squeeze(1))
             # if batch:
             #     x = x.squeeze(2)
