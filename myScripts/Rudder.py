@@ -1,4 +1,5 @@
 import torch
+from torch.nn import MSELoss
 # from apex import amp
 from myScripts.MyNet import Net
 from myScripts.ReplayBuffer import ReplayBuffer, ProcessData
@@ -16,9 +17,9 @@ class Rudder:
         self.use_transformer = False
         self.clip_value = 0.5
         self.frames_per_proc = 40
-        self.replay_buffer = ReplayBuffer(nr_procs, ac_embed_dim, device,self.frames_per_proc)
+        self.replay_buffer = ReplayBuffer(nr_procs, ac_embed_dim, device, self.frames_per_proc)
         self.train_timesteps = False
-        self.net = Net(image_dim, obs_space, instr_dim, ac_embed_dim, action_space,device).to(device)
+        self.net = Net(image_dim, obs_space, instr_dim, ac_embed_dim, action_space, device).to(device)
         self.optimizer = torch.optim.Adam(self.net.parameters(), lr=1e-4, weight_decay=1e-6)
         # self.optimizer = torch.optim.Adam(self.net.parameters())
         self.device = device
@@ -33,7 +34,7 @@ class Rudder:
         # mpl = mp.log_to_stderr()
         # mpl.setLevel(logging.INFO)
         self.updates = 0
-
+        self.mse_loss = MSELoss()
         ### APEX
         # self.net, self.optimizer = amp.initialize(self.net, self.optimizer, opt_level="O1")
 
@@ -42,60 +43,63 @@ class Rudder:
         quality = 1 - (np.abs(diff.item()) / self.mu) * 1 / (1 - self.quality_threshold)
         return quality
 
-    def paper_loss3(self, predictions, returns, rewards):
+    def paper_loss3(self, predictions, returns, pred_plus_ten_ts):
 
         diff = predictions[:, -1] - returns
         # Main task: predicting return at last timestep
         quality = self.calc_quality(diff)
         main_loss = diff ** 2
         # Auxiliary task: predicting final return at every timestep ([..., None] is for correct broadcasting)
-        continuous_loss = torch.mean(predictions[:, :] - returns[..., None]) ** 2
+        # continuous_loss = torch.mean((predictions[:, :] - returns[..., None]) ** 2)
+        continuous_loss = self.mse_loss(predictions[:, :], returns[..., None])
+
         # loss Le of the prediction of the output at t+10 at each time step t
-        rew_chunk = rewards[:, 10:]
-        pred_chunk = predictions[:, :-10]
-        # le10_loss =
+        pred_chunk = predictions[:, 10:]
+        # le10_loss = torch.mean((pred_chunk - pred_plus_ten_ts[:, :-10]) ** 2)
+        le10_loss = self.mse_loss(pred_chunk, pred_plus_ten_ts[:, :-10])
+
         # Combine losses
-        loss = main_loss + continuous_loss * 0.5
+        loss = main_loss + 0.1 * (continuous_loss + le10_loss)
         return loss, quality
 
-    def lossfunction(self, predictions, returns):
-        diff = predictions[:, -1] - returns
-        # Main task: predicting return at last timestep
-        quality = self.calc_quality(diff)
-        main_loss = torch.mean(diff) ** 2
-        # Auxiliary task: predicting final return at every timestep ([..., None] is for correct broadcasting)
-        aux_loss = torch.mean(predictions[:, :] - returns[..., None]) ** 2
-        # Combine losses
-        loss = main_loss + aux_loss * 0.5
-        return loss, quality
+    # def lossfunction(self, predictions, returns):
+    #     diff = predictions[:, -1] - returns
+    #     # Main task: predicting return at last timestep
+    #     quality = self.calc_quality(diff)
+    #     main_loss = torch.mean(diff) ** 2
+    #     # Auxiliary task: predicting final return at every timestep ([..., None] is for correct broadcasting)
+    #     aux_loss = torch.mean(predictions[:, :] - returns[..., None]) ** 2
+    #     # Combine losses
+    #     loss = main_loss + aux_loss * 0.5
+    #     return loss, quality
 
-    def get_lstm_prediction(self, proc_id, data, done, batch):
-        if not batch:
-            data = data.get_timestep_data(len(data.dones) - 1)
-        hidden = self.last_hidden[proc_id]
-        pred, hidden = self.net(data, hidden, not self.train_timesteps)
-        # 1 timestep samples are 2d
-        # if not pred.ndim == 3:
-        #     pred = pred.unsqueeze(0)
-        # if not self.train_timesteps:
-        try:
-            pred = pred[-1][-1][-1]
-        except:
-            pred = pred[-1][-1]
-        # print(pred.shape)
-
-        if not self.last_predicted_reward[proc_id]:
-            # first timestep
-            pred_reward = 0 - pred
-        else:
-            pred_reward = pred - self.last_predicted_reward[proc_id]
-        if done:
-            self.last_hidden[proc_id] = None
-            self.last_predicted_reward[proc_id] = None
-        else:
-            self.last_predicted_reward[proc_id] = pred
-            self.last_hidden[proc_id] = hidden
-        return pred_reward
+    # def get_lstm_prediction(self, proc_id, data, done, batch):
+    #     if not batch:
+    #         data = data.get_timestep_data(len(data.dones) - 1)
+    #     hidden = self.last_hidden[proc_id]
+    #     pred, hidden = self.net(data, hidden, not self.train_timesteps)
+    #     # 1 timestep samples are 2d
+    #     # if not pred.ndim == 3:
+    #     #     pred = pred.unsqueeze(0)
+    #     # if not self.train_timesteps:
+    #     try:
+    #         pred = pred[-1][-1][-1]
+    #     except:
+    #         pred = pred[-1][-1]
+    #     # print(pred.shape)
+    #
+    #     if not self.last_predicted_reward[proc_id]:
+    #         # first timestep
+    #         pred_reward = 0 - pred
+    #     else:
+    #         pred_reward = pred - self.last_predicted_reward[proc_id]
+    #     if done:
+    #         self.last_hidden[proc_id] = None
+    #         self.last_predicted_reward[proc_id] = None
+    #     else:
+    #         self.last_predicted_reward[proc_id] = pred
+    #         self.last_hidden[proc_id] = hidden
+    #     return pred_reward
 
     def get_transformer_prediction(self, proc_id, data, done):
         episode = self.replay_buffer.proc_data_buffer[proc_id]
@@ -121,21 +125,21 @@ class Rudder:
             # self.last_hidden[proc_id] = hidden
         return pred_reward
 
-    def predict_episodes_per_pID(self, episodes, proc_id):
-        current_ts = 0
-        end_pred = []
-        for e in episodes:
-            current_ts = e.end_timestep
-            pred, _ = self.net(e, None, not self.train_timesteps)
-            pred = pred[-1].squeeze(1)[-current_ts:]
-            end_pred.append(pred)
-        if current_ts - self.frames_per_proc - 1 != 0:
-            # one unfinished episode in proc buffer
-            episode = self.replay_buffer.proc_data_buffer[proc_id]
-            pred, _ = self.net(episode, None, not self.train_timesteps)
-            pred = pred[-1].squeeze(1)
-            end_pred.append(pred)
-        return torch.cat(end_pred, dim=-1)
+    # def predict_episodes_per_pID(self, episodes, proc_id):
+    #     current_ts = 0
+    #     end_pred = []
+    #     for e in episodes:
+    #         current_ts = e.end_timestep
+    #         pred, _ = self.net(e, None, not self.train_timesteps)
+    #         pred = pred[-1].squeeze(1)[-current_ts:]
+    #         end_pred.append(pred)
+    #     if current_ts - self.frames_per_proc - 1 != 0:
+    #         # one unfinished episode in proc buffer
+    #         episode = self.replay_buffer.proc_data_buffer[proc_id]
+    #         pred, _ = self.net(episode, None, not self.train_timesteps)
+    #         pred = pred[-1].squeeze(1)
+    #         end_pred.append(pred)
+    #     return torch.cat(end_pred, dim=-1)
 
     # def new_predict_reward(self):
     #     all_predictions=[]
@@ -155,13 +159,13 @@ class Rudder:
     def do_part_prediction(self, proc_id, timestep):
         with torch.no_grad():
             episode = self.replay_buffer.proc_data_buffer[proc_id]
-            pred = self.predict_full_episode(episode)
+            pred, _ = self.predict_full_episode(episode)
             episode_len = len(episode.dones)
-            to_add = min(episode_len, timestep+1)
-            previous_pred=None
+            to_add = min(episode_len, timestep + 1)
+            previous_pred = None
             # might be out of range because frames per proc is smaller than episode len
             try:
-                previous_pred= pred.squeeze()[-(to_add+1)]
+                previous_pred = pred.squeeze()[-(to_add + 1)]
             except:
                 pass
             # single dimension
@@ -218,8 +222,8 @@ class Rudder:
         return torch.stack(predictions).squeeze()
 
     def predict_full_episode(self, episode: ProcessData):
-        predictions, hidden = self.net(episode, None, True, self.use_transformer)
-        return predictions
+        predictions, hidden, pred_plus_ten_ts = self.net(episode, None, True, self.use_transformer)
+        return predictions, pred_plus_ten_ts
 
     def predict_every_timestep(self, episode: ProcessData):
         hidden = None
@@ -248,10 +252,11 @@ class Rudder:
         if self.train_timesteps:
             predictions = self.predict_every_timestep(episode)
         else:
-            predictions = self.predict_full_episode(episode)
+            predictions, pred_plus_ten_ts = self.predict_full_episode(episode)
         returns = torch.sum(episode.rewards, dim=-1)
         # returns = np.sum(episode.rewards)
-        loss, quality = self.lossfunction(predictions, returns)
+        loss, quality = self.paper_loss3(predictions, returns, pred_plus_ten_ts)
+        # loss, quality = self.lossfunction(predictions, returns)
 
         return loss, returns, quality, predictions.detach().clone()
 
@@ -334,8 +339,8 @@ class Rudder:
             self.current_quality = np.mean(qualities)
             # self.current_quality = 0.25
             print("sample {} return {:.2f} loss {:.6f}".format(episodes_ids[-1], episode.returnn, episode.loss))
-            print("pred",predictions.mean().item(),predictions[-1][-1][-1].item())
-            print("rewards",episode.rewards.mean().item(),episode.rewards[-1].item())
+            print("pred", predictions.mean().item(), predictions[-1][-1][-1].item())
+            print("rewards", episode.rewards.mean().item(), episode.rewards[-1].item())
             if False not in qualities_bools:
                 bad_quality = False
         # full_predictions = torch.cat(full_predictions, dim=-1)

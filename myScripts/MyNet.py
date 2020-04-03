@@ -51,6 +51,7 @@ class Net(nn.Module):
         self.embedding_reducer = nn.Linear(ac_embed_dim, self.compressed_embedding)
         self.film_pool = nn.MaxPool2d(kernel_size=(2, 2), stride=2)
         self.linear_out = nn.Linear(self.rudder_lstm_out, 1)
+        self.linear_out_plus_ten = nn.Linear(self.rudder_lstm_out, 1)
         self.relu = nn.ReLU()
         self.instr_rnn = nn.GRU(
             self.instr_dim, self.instr_dim,
@@ -71,10 +72,10 @@ class Net(nn.Module):
             self.controllers.append(mod.to(self.device))
 
         encoder_layer = nn.TransformerEncoderLayer(d_model=self.combined_input_dim, nhead=1)
-        self.transformer_input_encoder = nn.TransformerEncoder(encoder_layer, num_layers=2)
         encoder_layer = nn.TransformerEncoderLayer(d_model=self.combined_input_dim * 2, nhead=1)
         self.transformer_combined_encoder = nn.TransformerEncoder(encoder_layer, num_layers=6)
         self.fc_out_trans = torch.nn.Linear(self.combined_input_dim, 1)
+        self.transformer_input_encoder = nn.TransformerEncoder(encoder_layer, num_layers=2)
 
         self.image_conv_old = nn.Sequential(
             nn.Conv2d(in_channels=3, out_channels=16, kernel_size=(2, 2)),
@@ -194,6 +195,7 @@ class Net(nn.Module):
             # else:
             #     x, hidden = self.lstm(x, hidden)
             x, hidden = self.lstm(x)
+            plus_ten=self.linear_out_plus_ten(x.squeeze(1))
             # x = self.droput(x)
             # x=self.relu(x)
             x = self.linear_out(x.squeeze(1))
@@ -204,6 +206,7 @@ class Net(nn.Module):
             # 1 timestep samples are 2d
             if not x.ndim == 3:
                 x = x.unsqueeze(0)
+                plus_ten = plus_ten.unsqueeze(0)
 
 
-            return x, hidden
+            return x, hidden,plus_ten
