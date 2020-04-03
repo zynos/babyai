@@ -50,8 +50,8 @@ class Rudder:
         quality = self.calc_quality(diff)
         main_loss = diff ** 2
         # Auxiliary task: predicting final return at every timestep ([..., None] is for correct broadcasting)
-        # continuous_loss = torch.mean((predictions[:, :] - returns[..., None]) ** 2)
-        continuous_loss = self.mse_loss(predictions[:, :], returns[..., None])
+        continuous_loss = torch.mean((predictions[:, :] - returns[..., None]) ** 2)
+        # continuous_loss = self.mse_loss(predictions[:, :], returns[..., None])
 
         # loss Le of the prediction of the output at t+10 at each time step t
         pred_chunk = predictions[:, 10:]
@@ -335,7 +335,7 @@ class Rudder:
                     last_rewards.append(episode.rewards[-1].item())
                     # assert episode.returnn==self.replay_buffer.fast_returns[episodes_ids[i]]
                     qualities_bools.add(quality > 0)
-                    qualities.append(np.clip(quality, 0.0, 1.0))
+                    qualities.append(np.clip(quality, 0.0, 0.25))
             self.current_quality = np.mean(qualities)
             # self.current_quality = 0.25
             print("sample {} return {:.2f} loss {:.6f}".format(episodes_ids[-1], episode.returnn, episode.loss))
