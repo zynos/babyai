@@ -156,6 +156,7 @@ class BaseAlgo(ABC):
             #                                                  image)
             ret = self.rudder.new_predict_reward(done, i)
             if ret is not None:
+                # ret=ret*20
                 self.rudder_rewards = ret.transpose(0,1)
         if self.rudder.replay_buffer.buffer_full() and self.rudder.replay_buffer.encountered_different_returns() and i == 39:
             rudder_loss, last_ts_pred, full_pred = self.rudder.train_full_buffer()

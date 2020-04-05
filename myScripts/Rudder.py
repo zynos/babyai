@@ -54,12 +54,16 @@ class Rudder:
         # continuous_loss = self.mse_loss(predictions[:, :], returns[..., None])
 
         # loss Le of the prediction of the output at t+10 at each time step t
-        pred_chunk = predictions[:, 10:]
-        # le10_loss = torch.mean((pred_chunk - pred_plus_ten_ts[:, :-10]) ** 2)
-        le10_loss = self.mse_loss(pred_chunk, pred_plus_ten_ts[:, :-10])
+        le10_loss = 0.0
+        # if episode is smaller than 10 the follwoing would produce a NAN
+        if predictions.shape[1]>10:
+            pred_chunk = predictions[:, 10:]
+            le10_loss = torch.mean((pred_chunk - pred_plus_ten_ts[:, :-10]) ** 2)
+
+        # le10_loss = self.mse_loss(pred_chunk, pred_plus_ten_ts[:, :-10])
 
         # Combine losses
-        loss = main_loss + 0.1 * (continuous_loss + le10_loss)
+        loss = main_loss + 0.5 * (continuous_loss + le10_loss)
         return loss, quality
 
     # def lossfunction(self, predictions, returns):
@@ -183,6 +187,10 @@ class Rudder:
             else:
                 pred[0] = 0 - pred[0]
             pred -= previous_timesteps
+            returns=torch.sum(torch.tensor(episode.rewards[-to_add:],device=self.device))
+            predicted_returns = pred.sum()
+            prediction_error = returns - predicted_returns
+            pred += prediction_error / pred.shape[0]
 
             self.replay_buffer.current_predictions[proc_id].append(pred.detach().clone())
 
@@ -338,9 +346,10 @@ class Rudder:
                     qualities.append(np.clip(quality, 0.0, 0.25))
             self.current_quality = np.mean(qualities)
             # self.current_quality = 0.25
-            print("sample {} return {:.2f} loss {:.6f}".format(episodes_ids[-1], episode.returnn, episode.loss))
-            print("pred", predictions.mean().item(), predictions[-1][-1][-1].item())
-            print("rewards", episode.rewards.mean().item(), episode.rewards[-1].item())
+            print("sample {} return {:.2f} loss {:.4f} predX {:.2f} pred[-1] {:.2f} rewX {:.2f} rew[-1] {:.2f} ".
+                  format(episodes_ids[-1], episode.returnn, episode.loss,
+                         predictions.mean().item(), predictions[-1][-1][-1].item(),
+                         episode.rewards.mean().item(), episode.rewards[-1].item()))
             if False not in qualities_bools:
                 bad_quality = False
         # full_predictions = torch.cat(full_predictions, dim=-1)
