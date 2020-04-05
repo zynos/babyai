@@ -135,7 +135,7 @@ class BaseAlgo(ABC):
 
     def update_rudder_and_rescale_rewards(self, update_nr, i, queue_into_rudder, queue_back_from_rudder, embedding,
                                           action, rewards, done,
-                                          instr, image):
+                                          instr, image,value):
         ### SYNCHRONOUS
         # embeddings,actions,rewards,dones,instructions,images
         rudder_loss, last_ts_pred, full_pred = 0.0, 0.0, 0.0
@@ -143,7 +143,7 @@ class BaseAlgo(ABC):
         debug = False
         # rewards=rewards-10
         self.rudder.add_timestep_data(debug, queue_into_rudder, embedding, action, rewards, done,
-                                      instr, image)
+                                      instr, image,value)
         # if debug:
         #     print("after add_timestep_data", i)
         # if update_nr == 6 and i == 14:
@@ -268,7 +268,7 @@ class BaseAlgo(ABC):
                     self.update_rudder_and_rescale_rewards(update_nr, i, self.queue_into_rudder,
                                                            self.queue_back_from_rudder, embedding,
                                                            action, self.rewards[i], done, preprocessed_obs.instr,
-                                                           preprocessed_obs.image)
+                                                           preprocessed_obs.image,value)
 
             self.log_probs[i] = dist.log_prob(action)
 

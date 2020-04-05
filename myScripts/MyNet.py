@@ -45,7 +45,7 @@ class Net(nn.Module):
         self.compressed_embedding = 128
         # self.combined_input_dim = action_space.n + self.compressed_embedding + instr_dim + image_dim
         # embed only
-        self.combined_input_dim = action_space.n + ac_embed_dim *2 +1
+        self.combined_input_dim = action_space.n + ac_embed_dim *2 +1+1 #1 time 1 value
         self.rudder_lstm_out = 512
         self.max_timesteps=128
         self.embedding_reducer = nn.Linear(ac_embed_dim, self.compressed_embedding)
@@ -75,7 +75,7 @@ class Net(nn.Module):
         encoder_layer = nn.TransformerEncoderLayer(d_model=self.combined_input_dim * 2, nhead=1)
         self.transformer_combined_encoder = nn.TransformerEncoder(encoder_layer, num_layers=6)
         self.fc_out_trans = torch.nn.Linear(self.combined_input_dim, 1)
-        self.transformer_input_encoder = nn.TransformerEncoder(encoder_layer, num_layers=2)
+        self.transformer_input_encoder = nn.TransformerEncoder(encoder_layer, num_layers=1)
 
         self.image_conv_old = nn.Sequential(
             nn.Conv2d(in_channels=3, out_channels=16, kernel_size=(2, 2)),
@@ -121,23 +121,25 @@ class Net(nn.Module):
             instruction = torch.stack(dic.instructions)
             action = torch.stack(dic.actions)
             embedding = torch.stack(dic.embeddings)
+            value = torch.stack(dic.values)
         except:
             image = torch.transpose(dic.images, 1, 3)
             instruction = dic.instructions
             action = dic.actions
             embedding = dic.embeddings
+            value = dic.values
 
-        return image, instruction, action, embedding
+        return image, instruction, action, embedding,value
 
-    def extract_dict_values(self, dic):
-        try:
-            image = dic["images"].transpose(0, 2).unsqueeze(0)
-            instruction = dic["instructions"].unsqueeze(0)
-            action = dic["actions"].unsqueeze(0)
-            embedding = dic["embeddings"].unsqueeze(0).unsqueeze(0)
-        except:
-            image, instruction, action, embedding = self.extract_process_data(dic)
-        return image, instruction, action, embedding
+    # def extract_dict_values(self, dic):
+    #     try:
+    #         image = dic["images"].transpose(0, 2).unsqueeze(0)
+    #         instruction = dic["instructions"].unsqueeze(0)
+    #         action = dic["actions"].unsqueeze(0)
+    #         embedding = dic["embeddings"].unsqueeze(0).unsqueeze(0)
+    #     except:
+    #         image, instruction, action, embedding = self.extract_process_data(dic)
+    #     return image, instruction, action, embedding
 
     def prepare_input(self, dic, batch, use_transformer):
         # if batch:
@@ -148,7 +150,7 @@ class Net(nn.Module):
         #     #     image, instruction, action, embedding = self.extract_dict_values(dic)
         # else:
         #     image, instruction, action, embedding = self.extract_dict_values(dic)
-        image, instruction, action, embedding = self.extract_process_data(dic)
+        image, instruction, action, embedding, value = self.extract_process_data(dic)
         if batch:
             # image = self.image_conv(image).squeeze(2).squeeze(2)
             instruction = self.instr_rnn(self.word_embedding(instruction))[1][-1]
@@ -163,7 +165,7 @@ class Net(nn.Module):
             #embedding only
             # approx_time = torch.ones((x.shape[0],1)) * x.shape[0]
             approx_time = torch.linspace(0,1,self.max_timesteps,device=self.device)[:x.shape[0]].unsqueeze(1)
-            x = torch.cat([x,embedding,action,approx_time], dim=-1).unsqueeze(0)
+            x = torch.cat([x,embedding,action,approx_time,value.unsqueeze(1)], dim=-1).unsqueeze(0)
         else:
             image = self.image_conv(image).squeeze(2).squeeze(2).unsqueeze(0)
             instruction = self.instr_rnn(self.word_embedding(instruction))[1][-1].unsqueeze(0)
