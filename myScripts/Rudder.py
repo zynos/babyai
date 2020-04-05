@@ -346,10 +346,10 @@ class Rudder:
                     qualities.append(np.clip(quality, 0.0, 0.25))
             self.current_quality = np.mean(qualities)
             # self.current_quality = 0.25
-            print("sample {} return {:.2f} loss {:.4f} predX {:.2f} pred[-1] {:.2f} rewX {:.2f} rew[-1] {:.2f} ".
+            print("sample {} return {:.2f} loss {:.4f} predX {:.2f}  rewX {:.2f} pred[-1] {:.2f} rew[-1]  {:.2f} ".
                   format(episodes_ids[-1], episode.returnn, episode.loss,
-                         predictions.mean().item(), predictions[-1][-1][-1].item(),
-                         episode.rewards.mean().item(), episode.rewards[-1].item()))
+                         predictions.mean().item(), episode.rewards.mean().item(),
+                         predictions[-1][-1][-1].item(), episode.rewards[-1].item()))
             if False not in qualities_bools:
                 bad_quality = False
         # full_predictions = torch.cat(full_predictions, dim=-1)
