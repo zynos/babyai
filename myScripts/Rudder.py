@@ -277,6 +277,7 @@ class Rudder:
             try:
                 # print("episode.rewards",episode.rewards)
                 episode.rewards = torch.stack(episode.rewards)
+                # episode.values = torch.stack(episode.values)
             except:
                 pass
             assert isinstance(episode.rewards, torch.Tensor)

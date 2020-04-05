@@ -14,14 +14,16 @@ class ProcessData():
         self.embeddings = []
         self.images = []
         self.instructions = []
+        self.values = []
 
-    def add_single_timestep(self, embedding, action, reward, done, instruction, image):
+    def add_single_timestep(self, embedding, action, reward, done, instruction, image, value):
         self.embeddings.append(embedding)
         self.actions.append(action)
         self.rewards.append(reward)
         self.dones.append(done)
         self.images.append(image)
         self.instructions.append(instruction)
+        self.values.append(value)
 
     def get_timestep_data(self, timestep):
         dummy = ProcessData()
@@ -61,7 +63,7 @@ class ProcessData():
 
 
 class ReplayBuffer:
-    def __init__(self, nr_procs, embed_dim, device,frames_per_proc):
+    def __init__(self, nr_procs, embed_dim, device, frames_per_proc):
         self.max_steps = 128
         self.frames_per_proc = frames_per_proc
         self.embed_dim = embed_dim
@@ -79,8 +81,9 @@ class ReplayBuffer:
         self.images = torch.zeros((self.max_size, self.max_steps, 7, 7, 3)).to(device)
         self.instructions = torch.zeros((self.max_size, self.max_steps, 9), dtype=torch.int64).to(device)
         self.rewards = torch.zeros((self.max_size, self.max_steps)).to(device)
-        self.actions = torch.zeros((self.max_size, self.max_steps),dtype=torch.int64).to(device)
-        #as distribution
+        self.values = torch.zeros((self.max_size, self.max_steps)).to(device)
+        self.actions = torch.zeros((self.max_size, self.max_steps), dtype=torch.int64).to(device)
+        # as distribution
         # self.actions = torch.zeros((self.max_size, self.max_steps,7)).to(device)
         self.dones = np.zeros((self.max_size, self.max_steps), dtype=bool)
 
@@ -90,17 +93,17 @@ class ReplayBuffer:
         self.current_predictions = [[] for _ in range(nr_procs)]
         # self.current_predictions = torch.zeros((self.nr_procs,self.frames_per_proc))
 
-    def get_cloned_copy(self):
-        instance = ReplayBuffer(self.nr_procs, self.embed_dim, self.device)
-        instance.embeddings = self.embeddings.detach().clone()
-        instance.instructions = self.instructions.detach().clone()
-        instance.rewards = self.rewards.detach().clone()
-        instance.actions = self.actions.detach().clone()
-        instance.dones = self.dones
-
-        instance.fast_returns = self.fast_returns
-        instance.fast_losses = self.fast_losses
-        return instance
+    # def get_cloned_copy(self):
+    #     instance = ReplayBuffer(self.nr_procs, self.embed_dim, self.device)
+    #     instance.embeddings = self.embeddings.detach().clone()
+    #     instance.instructions = self.instructions.detach().clone()
+    #     instance.rewards = self.rewards.detach().clone()
+    #     instance.actions = self.actions.detach().clone()
+    #     instance.dones = self.dones
+    #
+    #     instance.fast_returns = self.fast_returns
+    #     instance.fast_losses = self.fast_losses
+    #     return instance
 
     def buffer_full(self):
         return self.added_episodes == self.max_size
@@ -155,7 +158,7 @@ class ReplayBuffer:
         return np.min(combined_ranks), np.argmin(combined_ranks)
 
     def add_data_to_process_buffer(self, data_list):
-        # data is embeddings,actions,rewards,dones,instructions,images
+        # data is embeddings,actions,rewards,dones,instructions,images, values
         complete_episodes = []
         procs_to_init = []
         for proc_id in range(self.nr_procs):
@@ -164,10 +167,6 @@ class ReplayBuffer:
             if self.proc_data_buffer[proc_id].dones[-1] == True:
                 procs_to_init.append(proc_id)
                 complete_episodes.append(self.proc_data_buffer[proc_id])
-                # self.proc_data_buffer[proc_id]=None
-                # self.proc_data_buffer[proc_id] = ProcessData()
-        # print("complete episodes",len(complete_episodes))
-        # self.proc_data_buffer_for_prediction=deepcopy(self.proc_data_buffer)
         self.procs_to_init = procs_to_init
         # self.init_process_data(procs_to_init)
         # del data_list
@@ -183,8 +182,8 @@ class ReplayBuffer:
             self.proc_data_buffer[p_id] = ProcessData()
             # print("init",p_id)
 
-    def add_timestep_data(self, embeddings, actions, rewards, dones, instructions, images):
-        result = self.detach_and_clone(embeddings, actions, rewards, dones, instructions, images)
+    def add_timestep_data(self, embeddings, actions, rewards, dones, instructions, images, values):
+        result = self.detach_and_clone(embeddings, actions, rewards, dones, instructions, images, values)
         complete_episodes = self.add_data_to_process_buffer(result)
         # del result
         return complete_episodes
@@ -199,27 +198,24 @@ class ReplayBuffer:
             return low_index
         return -1
 
-    def new_replace_episode_data(self, idx, episode: ProcessData):
-        # offset=10
-        # the first 10 will never be overwritten for debug causes only!!!
-        # idx = np.random.randint(offset,self.replay_buffer.max_size)
+    def new_replace_episode_data(self, proc_id, episode: ProcessData):
         stacked = torch.stack(episode.embeddings)
-        self.embeddings[idx][:len(stacked)] = stacked
+        self.embeddings[proc_id][:len(stacked)] = stacked
         stacked = torch.stack(episode.images)
-        self.images[idx][:len(stacked)] = stacked
+        self.images[proc_id][:len(stacked)] = stacked
         stacked = torch.stack(episode.instructions)
-        self.instructions[idx][:len(stacked)] = stacked
-        # stacked = torch.stack(episode.rewards)
+        self.instructions[proc_id][:len(stacked)] = stacked
         stacked = episode.rewards
-        # self.replay_buffer.fast_returns[idx] = torch.sum(stacked)
-        self.rewards[idx][:len(stacked)] = stacked
+        self.rewards[proc_id][:len(stacked)] = stacked
+        stacked = torch.stack(episode.values)
+        self.values[proc_id][:len(stacked)] = stacked
         stacked = np.array(episode.dones)
-        self.dones[idx][:len(stacked)] = stacked
+        self.dones[proc_id][:len(stacked)] = stacked
         stacked = torch.stack(episode.actions)
-        self.actions[idx][:len(stacked)] = stacked
+        self.actions[proc_id][:len(stacked)] = stacked
 
-        self.fast_losses[idx] = episode.loss
-        self.fast_returns[idx] = episode.returnn
+        self.fast_losses[proc_id] = episode.loss
+        self.fast_returns[proc_id] = episode.returnn
 
     def get_episode_from_tensors(self, id):
         episode = ProcessData()
@@ -229,6 +225,7 @@ class ReplayBuffer:
         episode.dones = self.dones[id][:max_idx]
         # assert len(np.where(episode.dones==True))==1
         episode.rewards = self.rewards[id][:max_idx]
+        episode.values = self.values[id][:max_idx]
         episode.actions = self.actions[id][:max_idx]
         episode.embeddings = self.embeddings[id][:max_idx]
         episode.images = self.images[id][:max_idx]

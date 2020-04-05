@@ -32,11 +32,9 @@ class PPOAlgo(BaseAlgo):
 
         self.optimizer = torch.optim.Adam(self.acmodel.parameters(), lr, (beta1, beta2), eps=adam_eps)
 
-
-
         self.batch_num = 0
 
-    def update_parameters(self,update_nr):
+    def update_parameters(self, update_nr):
         # Collect experiences
 
         exps, logs = self.collect_experiences(update_nr)
@@ -53,9 +51,10 @@ class PPOAlgo(BaseAlgo):
         (n_procs * n_frames_per_proc) x k 2D tensors where k is the number of classes for multiclass classification
         '''
 
+        proportional_entropy_control = 1 - update_nr / 2000.0
+        print(proportional_entropy_control)
         for _ in range(self.epochs):
             # Initialize log values
-
             log_entropies = []
             log_values = []
             log_policy_losses = []
@@ -111,19 +110,20 @@ class PPOAlgo(BaseAlgo):
                     surr2 = (value_clipped - sb.returnn).pow(2)
                     value_loss = torch.max(surr1, surr2).mean()
 
-                    #RUDDER
+                    # RUDDER
                     if self.use_rudder:
-                        rudder_value_clipped = sb.rudder_value + torch.clamp(rudder_value - sb.rudder_value, -self.clip_eps, self.clip_eps)
+                        rudder_value_clipped = sb.rudder_value + torch.clamp(rudder_value - sb.rudder_value,
+                                                                             -self.clip_eps, self.clip_eps)
                         surr1 = (rudder_value - sb.rudder_return).pow(2)
                         surr2 = (rudder_value_clipped - sb.rudder_return).pow(2)
                         rudder_value_loss = torch.max(surr1, surr2).mean()
                         # unclipped loss
                         # rudder_value_loss = (rudder_value - sb.rudder_return).pow(2).mean()
 
-                        combined_value_loss = value_loss + rudder_value_loss*self.rudder.current_quality
+                        combined_value_loss = value_loss + rudder_value_loss * self.rudder.current_quality
                         value_loss = combined_value_loss
 
-                    loss = policy_loss - self.entropy_coef * entropy + self.value_loss_coef * value_loss
+                    loss = policy_loss - proportional_entropy_control * self.entropy_coef * entropy + self.value_loss_coef * value_loss
 
                     # Update batch values
 
@@ -153,7 +153,8 @@ class PPOAlgo(BaseAlgo):
                 # with amp.scale_loss(batch_loss, self.optimizer) as scaled_loss:
                 #     scaled_loss.backward()
                 batch_loss.backward()
-                grad_norm = sum(p.grad.data.norm(2) ** 2 for p in self.acmodel.parameters() if p.grad is not None) ** 0.5
+                grad_norm = sum(
+                    p.grad.data.norm(2) ** 2 for p in self.acmodel.parameters() if p.grad is not None) ** 0.5
                 torch.nn.utils.clip_grad_norm_(self.acmodel.parameters(), self.max_grad_norm)
                 self.optimizer.step()
 
