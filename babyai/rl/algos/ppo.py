@@ -1,3 +1,4 @@
+import numpy as np
 import numpy
 import torch
 import torch.nn.functional as F
@@ -50,9 +51,9 @@ class PPOAlgo(BaseAlgo):
         being the added information. They are either (n_procs * n_frames_per_proc) 1D tensors or
         (n_procs * n_frames_per_proc) x k 2D tensors where k is the number of classes for multiclass classification
         '''
-
-        proportional_entropy_control = 1 - update_nr / 2000.0
-        print(proportional_entropy_control)
+        val=1 - update_nr / 2500.0
+        proportional_entropy_control = np.clip(val,0.001,1.0)
+        # print(proportional_entropy_control)
         for _ in range(self.epochs):
             # Initialize log values
             log_entropies = []
@@ -60,7 +61,7 @@ class PPOAlgo(BaseAlgo):
             log_policy_losses = []
             log_value_losses = []
             log_grad_norms = []
-
+            log_rud_val_loss =[]
             log_losses = []
 
             '''
@@ -80,6 +81,7 @@ class PPOAlgo(BaseAlgo):
                 batch_policy_loss = 0
                 batch_value_loss = 0
                 batch_loss = 0
+                batch_rud_val_loss = 0
 
                 # Initialize memory
 
@@ -119,11 +121,10 @@ class PPOAlgo(BaseAlgo):
                         rudder_value_loss = torch.max(surr1, surr2).mean()
                         # unclipped loss
                         # rudder_value_loss = (rudder_value - sb.rudder_return).pow(2).mean()
-
                         combined_value_loss = value_loss + rudder_value_loss * self.rudder.current_quality
                         value_loss = combined_value_loss
 
-                    loss = policy_loss - proportional_entropy_control * self.entropy_coef * entropy + self.value_loss_coef * value_loss
+                    loss = policy_loss - proportional_entropy_control* self.entropy_coef * entropy + self.value_loss_coef * value_loss
 
                     # Update batch values
 
@@ -132,6 +133,7 @@ class PPOAlgo(BaseAlgo):
                     batch_policy_loss += policy_loss.item()
                     batch_value_loss += value_loss.item()
                     batch_loss += loss
+                    batch_rud_val_loss +=rudder_value_loss
 
                     # Update memories for next epoch
 
@@ -145,6 +147,7 @@ class PPOAlgo(BaseAlgo):
                 batch_policy_loss /= self.recurrence
                 batch_value_loss /= self.recurrence
                 batch_loss /= self.recurrence
+                batch_rud_val_loss  /= self.recurrence
 
                 # Update actor-critic
 
@@ -166,6 +169,7 @@ class PPOAlgo(BaseAlgo):
                 log_value_losses.append(batch_value_loss)
                 log_grad_norms.append(grad_norm.item())
                 log_losses.append(batch_loss.item())
+                log_rud_val_loss.append(batch_rud_val_loss.item())
 
         # Log some values
 
@@ -175,6 +179,7 @@ class PPOAlgo(BaseAlgo):
         logs["value_loss"] = numpy.mean(log_value_losses)
         logs["grad_norm"] = numpy.mean(log_grad_norms)
         logs["loss"] = numpy.mean(log_losses)
+        logs["rud_rud_val_loss"]  = numpy.mean(log_rud_val_loss)
 
         return logs
 

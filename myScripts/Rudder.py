@@ -30,6 +30,8 @@ class Rudder:
         # For the first timestep we will take (0-predictions[:, :1]) as redistributed reward
         self.last_predicted_reward = [None] * nr_procs
         self.parallel_train_done = False
+        self.grad_norms=[]
+        self.grad_norm = 0
         self.current_quality = 0
         # mpl = mp.log_to_stderr()
         # mpl.setLevel(logging.INFO)
@@ -185,12 +187,13 @@ class Rudder:
             if previous_pred is not None:
                 pred[0] = pred[0] - previous_pred
             else:
-                pred[0] = 0 - pred[0]
+                # pred[0] = 0 - pred[0]
+                pred[0] = pred[0]
             pred -= previous_timesteps
-            returns=torch.sum(torch.tensor(episode.rewards[-to_add:],device=self.device))
-            predicted_returns = pred.sum()
-            prediction_error = returns - predicted_returns
-            pred += prediction_error / pred.shape[0]
+            # returns=torch.sum(torch.tensor(episode.rewards[-to_add:],device=self.device))
+            # predicted_returns = pred.sum()
+            # prediction_error = returns - predicted_returns
+            # pred += prediction_error / pred.shape[0]
 
             self.replay_buffer.current_predictions[proc_id].append(pred.detach().clone())
 
@@ -308,7 +311,10 @@ class Rudder:
         #     scaled_loss.backward()
         ###
         loss.backward()
+        grad_norm = sum(
+            p.grad.data.norm(2) ** 2 for p in self.net.parameters() if p.grad is not None) ** 0.5
         clip_grad_value_(self.net.parameters(), self.clip_value)
+        self.grad_norms.append(grad_norm.item())
         self.optimizer.step()
         self.optimizer.zero_grad()
 
@@ -353,6 +359,8 @@ class Rudder:
                          predictions[-1][-1][-1].item(), episode.rewards[-1].item()))
             if False not in qualities_bools:
                 bad_quality = False
+        self.grad_norm=np.mean(self.grad_norms)
+        self.grad_norms=[]
         # full_predictions = torch.cat(full_predictions, dim=-1)
         return np.mean(losses), np.mean(last_timestep_prediction), np.mean(
             last_rewards)  # , torch.mean(full_predictions)

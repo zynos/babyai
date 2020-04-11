@@ -135,7 +135,7 @@ class BaseAlgo(ABC):
 
     def update_rudder_and_rescale_rewards(self, update_nr, i, queue_into_rudder, queue_back_from_rudder, embedding,
                                           action, rewards, done,
-                                          instr, image,value):
+                                          instr, image, value):
         ### SYNCHRONOUS
         # embeddings,actions,rewards,dones,instructions,images
         rudder_loss, last_ts_pred, full_pred = 0.0, 0.0, 0.0
@@ -143,7 +143,7 @@ class BaseAlgo(ABC):
         debug = False
         # rewards=rewards-10
         self.rudder.add_timestep_data(debug, queue_into_rudder, embedding, action, rewards, done,
-                                      instr, image,value)
+                                      instr, image, value)
         # if debug:
         #     print("after add_timestep_data", i)
         # if update_nr == 6 and i == 14:
@@ -157,7 +157,8 @@ class BaseAlgo(ABC):
             ret = self.rudder.new_predict_reward(done, i)
             if ret is not None:
                 # ret=ret*20
-                self.rudder_rewards = ret.transpose(0,1)
+                ret=torch.clamp(ret,0.0,20.0)
+                self.rudder_rewards = ret.transpose(0, 1)
         if self.rudder.replay_buffer.buffer_full() and self.rudder.replay_buffer.encountered_different_returns() and i == 39:
             rudder_loss, last_ts_pred, full_pred = self.rudder.train_full_buffer()
             self.rudder.first_training_done = True
@@ -232,7 +233,7 @@ class BaseAlgo(ABC):
                 extra_predictions = model_results['extra_predictions']
                 embedding = model_results['embedding']
                 rudder_value = model_results['rudder_value']
-                logits =  model_results['logits']
+                logits = model_results['logits']
 
             action = dist.sample()
             # print("checkpoint 5")
@@ -268,7 +269,7 @@ class BaseAlgo(ABC):
                     self.update_rudder_and_rescale_rewards(update_nr, i, self.queue_into_rudder,
                                                            self.queue_back_from_rudder, embedding,
                                                            action, self.rewards[i], done, preprocessed_obs.instr,
-                                                           preprocessed_obs.image,value)
+                                                           preprocessed_obs.image, value)
 
             self.log_probs[i] = dist.log_prob(action)
 
@@ -334,15 +335,29 @@ class BaseAlgo(ABC):
         exps.action = self.actions.transpose(0, 1).reshape(-1)
         exps.value = self.values.transpose(0, 1).reshape(-1)
         exps.rudder_value = self.rudder_values.transpose(0, 1).reshape(-1)
+        exps.rudder_value = torch.clamp(exps.rudder_value, torch.min(exps.value).item(),
+                                            torch.max(exps.value).item())
         exps.reward = self.rewards.transpose(0, 1).reshape(-1)
         exps.advantage = self.advantages.transpose(0, 1).reshape(-1)
         exps.rudder_advantage = self.rudder_advantages.transpose(0, 1).reshape(-1)
+        rud_orig_val = torch.mean(exps.value)
+        rud_rud_val = torch.mean(exps.rudder_value)
+        rud_orig_adv = torch.mean(exps.advantage)
+        rud_rud_adv = torch.mean(exps.rudder_advantage)
+        print("valueX {:.1f} rudValueX {:.1f} advantX {:.1f} rudAdvantX {:.1f}".format(rud_orig_val, rud_rud_val,
+                                                                                       rud_orig_adv,
+                                                                                       rud_rud_adv))
         # a =a_o(1-qualityv) +a_r * quality
+        exps.rudder_advantage= torch.clamp(exps.rudder_advantage,torch.min(exps.advantage).item(),
+                                           torch.max(exps.advantage).item())
         if self.use_rudder:
             exps.advantage = exps.advantage * (
-                        1 - self.rudder.current_quality) + exps.rudder_advantage * self.rudder.current_quality
+                    1 - self.rudder.current_quality) + exps.rudder_advantage * self.rudder.current_quality
         exps.returnn = exps.value + exps.advantage
+
         exps.rudder_return = exps.rudder_value + exps.rudder_advantage
+        exps.rudder_return = torch.clamp(exps.rudder_return,torch.min(exps.returnn).item(),
+                                           torch.max(exps.returnn).item())
         exps.log_prob = self.log_probs.transpose(0, 1).reshape(-1)
 
         if self.aux_info:
@@ -357,6 +372,12 @@ class BaseAlgo(ABC):
         keep = max(self.log_done_counter, self.num_procs)
 
         log = {
+            "rud_rud_rew":torch.mean(self.rudder_rewards),
+            "rud_orig_val":rud_orig_val,
+            "rud_rud_val":rud_rud_val,
+            "rud_orig_adv":rud_orig_adv,
+            "rud_rud_adv":rud_rud_adv,
+            "rud_return":torch.mean( exps.rudder_return),
             "return_per_episode": self.log_return[-keep:],
             "reshaped_return_per_episode": self.log_reshaped_return[-keep:],
             "num_frames_per_episode": self.log_num_frames[-keep:],

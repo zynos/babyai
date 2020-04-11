@@ -147,7 +147,11 @@ if __name__ == '__main__':
               + ["success_rate"]
               + ["num_frames_" + stat for stat in ['mean', 'std', 'min', 'max']]
               + ["entropy", "value", "policy_loss", "value_loss", "loss", "grad_norm"]
-              + ["rud_loss","rudder_pred_last","rud_last_rewards","rud_quality"])
+              + ["rud_loss","rudder_pred_last","rud_last_rewards","rud_quality",
+                 "rud_grad_norm","rud_orig_val","rud_rud_val","rud_orig_adv","rud_rud_adv","rud_return",
+                 "rud_rud_val_loss","rud_rud_rew"])
+
+
     if args.tb:
         from tensorboardX import SummaryWriter
 
@@ -221,12 +225,19 @@ if __name__ == '__main__':
                     logs["entropy"], logs["value"], logs["policy_loss"], logs["value_loss"],
                     logs["loss"], logs["grad_norm"],
                     logs["rudder_loss"],logs["rudder_pred_last"],logs["LastRew_mean"],
-                    algo.rudder.current_quality]
+                    algo.rudder.current_quality,algo.rudder.grad_norm,
+                    logs["rud_orig_val"],logs["rud_rud_val"],logs["rud_orig_adv"],logs["rud_rud_adv"],
+                    logs["rud_return"],logs["rud_rud_val_loss"],logs["rud_rud_rew"]]
 
             format_str = ("U {} | E {} | F {:06} | FPS {:04.0f} | D {} | R:xsmM {: .2f} {: .2f} {: .2f} {: .2f} | "
                           "S {:.2f} | F:xsmM {:.1f} {:.1f} {} {} | H {:.3f} | V {:.3f} | "
                           "pL {: .3f} | vL {:.3f} | L {:.3f} | gN {:.3f} | "
-                          "RuL {:.4f} | RuPrLast {:.2f} | LastRew {:.2f} | RuQual {:.2f}" )
+                          "RuL {:.4f} | RuPrLast {:.2f} | LastRew {:.2f} | RuQual {:.2f} |"
+                          "RuGradN {:.2f} |"
+                          "RuOVal {:.2f} | RuRVal {:.2f} | RuOAdv {:.2f} | RuRAdv {:.2f} | RuRet {:.2f} "
+                          " RuVLoss {:.2f} | RuRRew {:.2f}")
+
+
             # print("try to log")
 
             logger.info(format_str.format(*data))
