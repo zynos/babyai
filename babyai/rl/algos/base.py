@@ -141,7 +141,8 @@ class BaseAlgo(ABC):
         rudder_loss, last_ts_pred, full_pred = 0.0, 0.0, 0.0
         debug = update_nr >= 6 and i >= 15
         debug = False
-        # rewards=rewards-10
+        rewards=rewards/20
+
         self.rudder.add_timestep_data(debug, queue_into_rudder, embedding, action, rewards, done,
                                       instr, image, value)
         # if debug:
@@ -156,8 +157,8 @@ class BaseAlgo(ABC):
             #                                                  image)
             ret = self.rudder.new_predict_reward(done, i)
             if ret is not None:
-                # ret=ret*20
-                ret=torch.clamp(ret,0.0,20.0)
+                ret=ret*20
+                # ret=torch.clamp(ret,-10.0,10.0)
                 self.rudder_rewards = ret.transpose(0, 1)
         if self.rudder.replay_buffer.buffer_full() and self.rudder.replay_buffer.encountered_different_returns() and i == 39:
             rudder_loss, last_ts_pred, full_pred = self.rudder.train_full_buffer()

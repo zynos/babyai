@@ -24,7 +24,7 @@ class Rudder:
         # self.optimizer = torch.optim.Adam(self.net.parameters())
         self.device = device
         self.first_training_done = False
-        self.mu = 20
+        self.mu = 1
         self.quality_threshold = 0.8
         self.last_hidden = [None] * nr_procs
         # For the first timestep we will take (0-predictions[:, :1]) as redistributed reward
@@ -190,10 +190,11 @@ class Rudder:
                 # pred[0] = 0 - pred[0]
                 pred[0] = pred[0]
             pred -= previous_timesteps
-            # returns=torch.sum(torch.tensor(episode.rewards[-to_add:],device=self.device))
-            # predicted_returns = pred.sum()
-            # prediction_error = returns - predicted_returns
-            # pred += prediction_error / pred.shape[0]
+            # enforce same return
+            returns=torch.sum(torch.tensor(episode.rewards[-to_add:],device=self.device))
+            predicted_returns = pred.sum()
+            prediction_error = returns - predicted_returns
+            pred += prediction_error / pred.shape[0]
 
             self.replay_buffer.current_predictions[proc_id].append(pred.detach().clone())
 
@@ -350,7 +351,7 @@ class Rudder:
                     last_rewards.append(episode.rewards[-1].item())
                     # assert episode.returnn==self.replay_buffer.fast_returns[episodes_ids[i]]
                     qualities_bools.add(quality > 0)
-                    qualities.append(np.clip(quality, 0.0, 0.25))
+                    qualities.append(np.clip(quality, 0.0, 1.0))
             self.current_quality = np.mean(qualities)
             # self.current_quality = 0.25
             print("sample {} return {:.2f} loss {:.4f} predX {:.2f}  rewX {:.2f} pred[-1] {:.2f} rew[-1]  {:.2f} ".

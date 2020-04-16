@@ -51,8 +51,9 @@ class PPOAlgo(BaseAlgo):
         being the added information. They are either (n_procs * n_frames_per_proc) 1D tensors or
         (n_procs * n_frames_per_proc) x k 2D tensors where k is the number of classes for multiclass classification
         '''
-        val=1 - update_nr / 2500.0
-        proportional_entropy_control = np.clip(val,0.001,1.0)
+        # val=1 - update_nr / 2500.0
+        # proportional_entropy_control = np.clip(val,0.001,1.0)
+        proportional_entropy_control = 1
         # print(proportional_entropy_control)
         for _ in range(self.epochs):
             # Initialize log values
