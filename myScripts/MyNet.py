@@ -97,23 +97,23 @@ class Net(nn.Module):
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=(2, 2), stride=2)
         )
-        self.lstm = nn.LSTM(self.combined_input_dim, self.rudder_lstm_out, batch_first=True)
+        # self.lstm = nn.LSTM(self.combined_input_dim, self.rudder_lstm_out, batch_first=True)
         self.droput = nn.Dropout(p=0.25)
 
 
-        # self.lstm = LSTMLayer(
-        #     in_features=self.combined_input_dim, out_features=self.rudder_lstm_out, inputformat='NLC',
-        #     # cell input: initialize weights to forward inputs with xavier, disable connections to recurrent inputs
-        #     w_ci=(torch.nn.init.xavier_normal_, False),
-        #     # input gate: disable connections to forward inputs, initialize weights to recurrent inputs with xavier
-        #     w_ig=(False, torch.nn.init.xavier_normal_),
-        #     # output gate: disable all connection (=no forget gate) and disable bias
-        #     w_og=False, b_og=False,
-        #     # forget gate: disable all connection (=no forget gate) and disable bias
-        #     w_fg=False, b_fg=False,
-        #     # LSTM output activation is set to identity function
-        #     a_out=lambda x: x
-        # )
+        self.lstm = LSTMLayer(
+            in_features=self.combined_input_dim, out_features=self.rudder_lstm_out, inputformat='NLC',
+            # cell input: initialize weights to forward inputs with xavier, disable connections to recurrent inputs
+            w_ci=(torch.nn.init.xavier_normal_, False),
+            # input gate: disable connections to forward inputs, initialize weights to recurrent inputs with xavier
+            w_ig=(False, torch.nn.init.xavier_normal_),
+            # output gate: disable all connection (=no forget gate) and disable bias
+            w_og=False, b_og=False,
+            # forget gate: disable all connection (=no forget gate) and disable bias
+            w_fg=False, b_fg=False,
+            # LSTM output activation is set to identity function
+            a_out=lambda x: x
+        )
 
     def extract_process_data(self, dic):
         try:
@@ -196,7 +196,7 @@ class Net(nn.Module):
             #     x, hidden = self.lstm(x)
             # else:
             #     x, hidden = self.lstm(x, hidden)
-            x, hidden = self.lstm(x)
+            x, hidden = self.lstm(x,return_all_seq_pos=True)
             plus_ten=self.linear_out_plus_ten(x.squeeze(1))
             # x = self.droput(x)
             # x=self.relu(x)

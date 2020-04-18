@@ -8,6 +8,8 @@ import os
 import logging
 import csv
 import json
+import pickle
+
 import gym
 import time
 import datetime
@@ -208,6 +210,9 @@ if __name__ == '__main__':
         if status['i']==6:
             print("danger")
         if status['i'] % args.log_interval == 0:
+            if algo.rudder.replay_buffer.buffer_full():
+                with open('rudderWidi'+str(status['i'])+'.pkl','wb') as f:
+                    pickle.dump(algo.rudder,f)
 
             total_ellapsed_time = int(time.time() - total_start_time)
             fps = logs["num_frames"] / (update_end_time - update_start_time)

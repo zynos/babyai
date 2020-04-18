@@ -1,9 +1,12 @@
+from random import random
+
 import torch
 from scipy.stats import rankdata
 import numpy as np
 from torch.distributions import Categorical
 from copy import deepcopy
-
+import matplotlib.pyplot as plt
+import matplotlib
 
 class ProcessData():
     def __init__(self):
@@ -15,6 +18,7 @@ class ProcessData():
         self.images = []
         self.instructions = []
         self.values = []
+
 
     def add_single_timestep(self, embedding, action, reward, done, instruction, image, value):
         self.embeddings.append(embedding)
@@ -161,11 +165,18 @@ class ReplayBuffer:
         # data is embeddings,actions,rewards,dones,instructions,images, values
         complete_episodes = []
         procs_to_init = []
+        colors = [(1, 1, 1)] + [(random(), random(), random()) for i in range(255)]
+        new_map = matplotlib.colors.LinearSegmentedColormap.from_list('new_map', colors, N=256)
         for proc_id in range(self.nr_procs):
             el = [data[proc_id] for data in data_list]
             self.proc_data_buffer[proc_id].add_single_timestep(*el)
             if self.proc_data_buffer[proc_id].dones[-1] == True:
                 procs_to_init.append(proc_id)
+                epi=self.proc_data_buffer[proc_id]
+                plt.imshow(epi.images[0])
+                plt.plot()
+                plt.imshow(epi.images[24]-255)
+                plt.plot()
                 complete_episodes.append(self.proc_data_buffer[proc_id])
         self.procs_to_init = procs_to_init
         # self.init_process_data(procs_to_init)
