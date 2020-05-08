@@ -34,19 +34,23 @@ class ExpertControllerFiLM(nn.Module):
         return out
 
 class Net(nn.Module):
-    def __init__(self, image_dim, obs_space, instr_dim, ac_embed_dim, action_space,device):
+    def __init__(self, image_dim,  instr_dim, ac_embed_dim, action_space,device,use_widi,action_only):
         super(Net, self).__init__()
-        self.action_space = action_space.n
+        self.action_space = action_space
         self.device=device
         self.image_dim = image_dim
         self.instr_dim = instr_dim
         self.ac_embed_dim = ac_embed_dim
-        self.word_embedding = nn.Embedding(obs_space["instr"], self.instr_dim)
+        self.word_embedding = nn.Embedding(100, self.instr_dim)
         self.compressed_embedding = 128
-        self.use_widi_lstm = False
+        self.use_widi_lstm = use_widi
         # self.combined_input_dim = action_space.n + self.compressed_embedding + instr_dim + image_dim
         # embed only
-        self.combined_input_dim = action_space.n + ac_embed_dim *2 +1+1 #1 time 1 value
+        self.action_only = action_only
+        if self.action_only:
+            self.combined_input_dim = action_space + ac_embed_dim *1# +1+1 #1 time 1 value
+        else:
+            self.combined_input_dim = action_space + ac_embed_dim * 2  +1+1 #1 time 1 value
         self.rudder_lstm_out = 128
         self.max_timesteps=128
         self.embedding_reducer = nn.Linear(ac_embed_dim, self.compressed_embedding)
@@ -73,9 +77,10 @@ class Net(nn.Module):
             self.controllers.append(mod.to(self.device))
 
         encoder_layer = nn.TransformerEncoderLayer(d_model=self.combined_input_dim, nhead=1)
-        encoder_layer = nn.TransformerEncoderLayer(d_model=self.combined_input_dim * 2, nhead=1)
+        # encoder_layer = nn.TransformerEncoderLayer(d_model=self.combined_input_dim * 2, nhead=1)
         self.transformer_combined_encoder = nn.TransformerEncoder(encoder_layer, num_layers=6)
         self.fc_out_trans = torch.nn.Linear(self.combined_input_dim, 1)
+        self.fc_out_plus_ten_trans = torch.nn.Linear(self.combined_input_dim, 1)
         self.transformer_input_encoder = nn.TransformerEncoder(encoder_layer, num_layers=1)
 
         self.image_conv_old = nn.Sequential(
@@ -167,7 +172,12 @@ class Net(nn.Module):
             #embedding only
             # approx_time = torch.ones((x.shape[0],1)) * x.shape[0]
             approx_time = torch.linspace(0,1,self.max_timesteps,device=self.device)[:x.shape[0]].unsqueeze(1)
-            x = torch.cat([x,embedding,action,approx_time,value.unsqueeze(1)], dim=-1).unsqueeze(0)
+
+            if self.action_only:
+                x = torch.cat([x,action], dim=-1).unsqueeze(0)
+            else:
+                x = torch.cat([x,action,embedding,approx_time,value.unsqueeze(1)], dim=-1).unsqueeze(0)
+
         else:
             image = self.image_conv(image).squeeze(2).squeeze(2).unsqueeze(0)
             instruction = self.instr_rnn(self.word_embedding(instruction))[1][-1].unsqueeze(0)
@@ -189,10 +199,11 @@ class Net(nn.Module):
 
             # out=self.transformer_combined_encoder(comb)
 
+            plus_ten = self.fc_out_plus_ten_trans(x.squeeze(1))
             x = self.fc_out_trans(x.squeeze(1))
             if not x.ndim == 3:
                 x = x.unsqueeze(0)
-            return x, None
+            return x, None, plus_ten
         else:
             # if not hidden:
             #     x, hidden = self.lstm(x)

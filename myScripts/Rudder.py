@@ -12,33 +12,38 @@ from torch.nn.utils import clip_grad_value_
 
 
 class Rudder:
-    def __init__(self, mem_dim, nr_procs, obs_space, instr_dim, ac_embed_dim, image_dim, action_space, device):
-        self.nr_procs = nr_procs
-        self.use_transformer = False
-        self.clip_value = 0.5
-        self.frames_per_proc = 40
-        self.replay_buffer = ReplayBuffer(nr_procs, ac_embed_dim, device, self.frames_per_proc)
+
+    def __init__(self):
+        # for testing supervised
         self.train_timesteps = False
-        self.net = Net(image_dim, obs_space, instr_dim, ac_embed_dim, action_space, device).to(device)
-        self.optimizer = torch.optim.Adam(self.net.parameters(), lr=1e-4, weight_decay=1e-6)
-        # self.optimizer = torch.optim.Adam(self.net.parameters())
-        self.device = device
-        self.first_training_done = False
-        self.mu = 1
-        self.quality_threshold = 0.8
-        self.last_hidden = [None] * nr_procs
-        # For the first timestep we will take (0-predictions[:, :1]) as redistributed reward
-        self.last_predicted_reward = [None] * nr_procs
-        self.parallel_train_done = False
-        self.grad_norms=[]
-        self.grad_norm = 0
-        self.current_quality = 0
-        # mpl = mp.log_to_stderr()
-        # mpl.setLevel(logging.INFO)
-        self.updates = 0
-        self.mse_loss = MSELoss()
-        ### APEX
-        # self.net, self.optimizer = amp.initialize(self.net, self.optimizer, opt_level="O1")
+
+    # def __init__(self, mem_dim, nr_procs, obs_space, instr_dim, ac_embed_dim, image_dim, action_space, device):
+    #     self.nr_procs = nr_procs
+    #     self.use_transformer = False
+    #     self.clip_value = 0.5
+    #     self.frames_per_proc = 40
+    #     self.replay_buffer = ReplayBuffer(nr_procs, ac_embed_dim, device, self.frames_per_proc)
+    #     self.train_timesteps = False
+    #     self.net = Net(image_dim, obs_space, instr_dim, ac_embed_dim, action_space, device).to(device)
+    #     self.optimizer = torch.optim.Adam(self.net.parameters(), lr=1e-6, weight_decay=1e-6)
+    #     # self.optimizer = torch.optim.Adam(self.net.parameters())
+    #     self.device = device
+    #     self.first_training_done = False
+    #     self.mu = 1
+    #     self.quality_threshold = 0.8
+    #     self.last_hidden = [None] * nr_procs
+    #     # For the first timestep we will take (0-predictions[:, :1]) as redistributed reward
+    #     self.last_predicted_reward = [None] * nr_procs
+    #     self.parallel_train_done = False
+    #     self.grad_norms=[]
+    #     self.grad_norm = 0
+    #     self.current_quality = 0
+    #     # mpl = mp.log_to_stderr()
+    #     # mpl.setLevel(logging.INFO)
+    #     self.updates = 0
+    #     self.mse_loss = MSELoss()
+    #     ### APEX
+    #     # self.net, self.optimizer = amp.initialize(self.net, self.optimizer, opt_level="O1")
 
     def calc_quality(self, diff):
         # diff is g - gT_hat -->  see rudder paper A267
@@ -65,7 +70,7 @@ class Rudder:
         # le10_loss = self.mse_loss(pred_chunk, pred_plus_ten_ts[:, :-10])
 
         # Combine losses
-        loss = main_loss + 0.5 * (continuous_loss + le10_loss)
+        loss = main_loss + 0.01 * (continuous_loss + le10_loss)
         return loss, quality
 
     # def lossfunction(self, predictions, returns):
@@ -303,7 +308,8 @@ class Rudder:
         quality = 0.1
         return quality
 
-    def train_and_set_metrics(self, episode, episode_id):
+    def train_and_set_metrics(self, episode):
+        self.net.train()
         # loss, returnn, quality = self.train_one_episode(episode)
         loss, returns, quality, predictions = self.feed_network(episode)
 
@@ -315,7 +321,7 @@ class Rudder:
         grad_norm = sum(
             p.grad.data.norm(2) ** 2 for p in self.net.parameters() if p.grad is not None) ** 0.5
         clip_grad_value_(self.net.parameters(), self.clip_value)
-        self.grad_norms.append(grad_norm.item())
+
         self.optimizer.step()
         self.optimizer.zero_grad()
 
@@ -324,9 +330,9 @@ class Rudder:
         # print("Loss",loss)
         episode.loss = loss
         episode.returnn = returnn
-        self.replay_buffer.fast_losses[episode_id] = loss
+
         # print("loss", loss)
-        return quality, predictions
+        return quality, predictions, episode,grad_norm
 
     def train_full_buffer(self):
         # print("train_full_buffer")
@@ -343,15 +349,16 @@ class Rudder:
                 episodes, episodes_ids = self.replay_buffer.sample_episodes()
                 # episodes = self.replay_buffer.sample_episodes()
                 for i, episode in enumerate(episodes):
-                    quality, predictions = self.train_and_set_metrics(episode, episodes_ids[i])
-                    # quality=self.train_and_set_metrics(episode)
+                    quality, predictions, episode, grad_norm  = self.train_and_set_metrics(episode)
+                    self.grad_norms.append(grad_norm.item())
+                    self.replay_buffer.fast_losses[episodes_ids[i]] = episode.loss
                     full_predictions.append(predictions.unsqueeze(0))
                     last_timestep_prediction.append(predictions[0][-1].item())
                     losses.append(episode.loss)
                     last_rewards.append(episode.rewards[-1].item())
                     # assert episode.returnn==self.replay_buffer.fast_returns[episodes_ids[i]]
                     qualities_bools.add(quality > 0)
-                    qualities.append(np.clip(quality, 0.0, 1.0))
+                    qualities.append(np.clip(quality, 0.0, 0.01))
             self.current_quality = np.mean(qualities)
             # self.current_quality = 0.25
             print("sample {} return {:.2f} loss {:.4f} predX {:.2f}  rewX {:.2f} pred[-1] {:.2f} rew[-1]  {:.2f} ".
@@ -416,11 +423,11 @@ class Rudder:
 
         # print("leaving new_add_to_replay_buffer")
 
-    def recalculate_all_losses(self):
-        for i in range(self.replay_buffer.max_size):
-            episode = self.replay_buffer.get_episode_from_tensors(i)
-            self.inference_and_set_metrics(episode)
-            self.replay_buffer.fast_losses[i] = episode.loss
+    # def recalculate_all_losses(self):
+    #     for i in range(self.replay_buffer.max_size):
+    #         episode = self.replay_buffer.get_episode_from_tensors(i)
+    #         self.inference_and_set_metrics(episode)
+    #         self.replay_buffer.fast_losses[i] = episode.loss
 
     def add_timestep_data(self, debug, queue_in_rudder, *args):
         # print("in ts data 1")

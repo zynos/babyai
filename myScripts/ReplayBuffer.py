@@ -8,6 +8,7 @@ from copy import deepcopy
 import matplotlib.pyplot as plt
 import matplotlib
 
+
 class ProcessData():
     def __init__(self):
         # input proc_id * feature
@@ -18,9 +19,9 @@ class ProcessData():
         self.images = []
         self.instructions = []
         self.values = []
+        self.mission = []
 
-
-    def add_single_timestep(self, embedding, action, reward, done, instruction, image, value):
+    def add_single_timestep(self, embedding, action, reward, done, instruction, image, value,mission):
         self.embeddings.append(embedding)
         self.actions.append(action)
         self.rewards.append(reward)
@@ -28,6 +29,7 @@ class ProcessData():
         self.images.append(image)
         self.instructions.append(instruction)
         self.values.append(value)
+        self.mission.append(mission)
 
     def get_timestep_data(self, timestep):
         dummy = ProcessData()
@@ -80,10 +82,12 @@ class ReplayBuffer:
         self.max_size = 128
         # self.replay_buffer = [None] * self.max_size
         self.big_counter = 0
+        self.nonzero_percent = 0
 
         self.embeddings = torch.zeros((self.max_size, self.max_steps, embed_dim)).to(device)
         self.images = torch.zeros((self.max_size, self.max_steps, 7, 7, 3)).to(device)
         self.instructions = torch.zeros((self.max_size, self.max_steps, 9), dtype=torch.int64).to(device)
+        self.missions = [""] * self.max_size
         self.rewards = torch.zeros((self.max_size, self.max_steps)).to(device)
         self.values = torch.zeros((self.max_size, self.max_steps)).to(device)
         self.actions = torch.zeros((self.max_size, self.max_steps), dtype=torch.int64).to(device)
@@ -165,18 +169,18 @@ class ReplayBuffer:
         # data is embeddings,actions,rewards,dones,instructions,images, values
         complete_episodes = []
         procs_to_init = []
-        colors = [(1, 1, 1)] + [(random(), random(), random()) for i in range(255)]
-        new_map = matplotlib.colors.LinearSegmentedColormap.from_list('new_map', colors, N=256)
+        # colors = [(1, 1, 1)] + [(random(), random(), random()) for i in range(255)]
+        # new_map = matplotlib.colors.LinearSegmentedColormap.from_list('new_map', colors, N=256)
         for proc_id in range(self.nr_procs):
             el = [data[proc_id] for data in data_list]
             self.proc_data_buffer[proc_id].add_single_timestep(*el)
             if self.proc_data_buffer[proc_id].dones[-1] == True:
                 procs_to_init.append(proc_id)
-                epi=self.proc_data_buffer[proc_id]
-                plt.imshow(epi.images[0])
-                plt.plot()
-                plt.imshow(epi.images[24]-255)
-                plt.plot()
+                # epi = self.proc_data_buffer[proc_id]
+                # plt.imshow(epi.images[0])
+                # plt.plot()
+                # plt.imshow(epi.images[24] - 255)
+                # plt.plot()
                 complete_episodes.append(self.proc_data_buffer[proc_id])
         self.procs_to_init = procs_to_init
         # self.init_process_data(procs_to_init)
@@ -193,8 +197,14 @@ class ReplayBuffer:
             self.proc_data_buffer[p_id] = ProcessData()
             # print("init",p_id)
 
-    def add_timestep_data(self, embeddings, actions, rewards, dones, instructions, images, values):
-        result = self.detach_and_clone(embeddings, actions, rewards, dones, instructions, images, values)
+    def add_timestep_data(self, embeddings, actions, rewards, dones, instructions, images, values,obs):
+        missions = [o["mission"] for o in obs]
+        result = self.detach_and_clone(embeddings, actions, rewards, dones, instructions, images, values,missions)
+        debug = {"put": 1, "the": 2, "grey": 3, "key": 4, "next": 5, "to": 6, "red": 7, "box": 8, "yellow": 9,
+                 "blue": 10, "green": 11, "purple": 12, "ball": 13}
+        debug = {v: k for k, v in debug.items()}
+        deb_str = [debug[e.item()] for e in instructions[0]]
+        deb_true = missions[0]
         complete_episodes = self.add_data_to_process_buffer(result)
         # del result
         return complete_episodes
@@ -217,6 +227,12 @@ class ReplayBuffer:
         stacked = torch.stack(episode.instructions)
         self.instructions[proc_id][:len(stacked)] = stacked
         stacked = episode.rewards
+        debug={"put": 1, "the": 2, "grey": 3, "key": 4, "next": 5, "to": 6, "red": 7, "box": 8, "yellow": 9, "blue": 10, "green": 11, "purple": 12, "ball": 13}
+        debug = {v: k for k, v in debug.items()}
+        deb_str= [debug[e.item()] for e in episode.instructions[0]]
+        deb_true = episode.mission[0]
+        tmp = self.missions[proc_id]
+        self.missions[proc_id]=episode.mission[0]
         self.rewards[proc_id][:len(stacked)] = stacked
         stacked = torch.stack(episode.values)
         self.values[proc_id][:len(stacked)] = stacked
@@ -230,17 +246,19 @@ class ReplayBuffer:
 
     def get_episode_from_tensors(self, id):
         episode = ProcessData()
+        # if this creates IndexError replay buffer is not full
         max_idx = np.where(self.dones[id] == True)[0][0]
         # we want to include last element
         max_idx = max_idx + 1
         episode.dones = self.dones[id][:max_idx]
         # assert len(np.where(episode.dones==True))==1
-        episode.rewards = self.rewards[id][:max_idx]
-        episode.values = self.values[id][:max_idx]
-        episode.actions = self.actions[id][:max_idx]
-        episode.embeddings = self.embeddings[id][:max_idx]
-        episode.images = self.images[id][:max_idx]
-        episode.instructions = self.instructions[id][:max_idx]
+        episode.rewards = self.rewards[id][:max_idx].clone().detach()
+        episode.values = self.values[id][:max_idx].clone().detach()
+        episode.actions = self.actions[id][:max_idx].clone().detach()
+        episode.embeddings = self.embeddings[id][:max_idx].clone().detach()
+        episode.images = self.images[id][:max_idx].clone().detach()
+        episode.instructions = self.instructions[id][:max_idx].clone().detach()
+        episode.mission = self.missions[id]
         # episode.returnn=self.fast_returns[id]
         return episode
 

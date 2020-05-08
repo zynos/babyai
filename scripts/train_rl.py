@@ -84,11 +84,18 @@ if __name__ == '__main__':
     utils.configure_logging(args.model)
     logger = logging.getLogger(__name__)
 
+
+    load_vocab_from = 'newDataColl0.01'
+    # load_vocab_from = None
     # Define obss preprocessor
+    # if 'emb' in args.arch:
+    #     obss_preprocessor = utils.IntObssPreprocessor(args.model, envs[0].observation_space, args.pretrained_model)
+    # else:
+    #     obss_preprocessor = utils.ObssPreprocessor(args.model, envs[0].observation_space, args.pretrained_model)
     if 'emb' in args.arch:
-        obss_preprocessor = utils.IntObssPreprocessor(args.model, envs[0].observation_space, args.pretrained_model)
+        obss_preprocessor = utils.IntObssPreprocessor(args.model, envs[0].observation_space, load_vocab_from)
     else:
-        obss_preprocessor = utils.ObssPreprocessor(args.model, envs[0].observation_space, args.pretrained_model)
+        obss_preprocessor = utils.ObssPreprocessor(args.model, envs[0].observation_space, load_vocab_from)
 
     # Define actor-critic model
     acmodel = utils.load_model(args.model, raise_not_found=False)
@@ -207,12 +214,21 @@ if __name__ == '__main__':
 
         # Print logs
         print("trainrl",status['i']," rudder influence",algo.rudder.current_quality)
-        if status['i']==6:
-            print("danger")
+
+        # if status['i'] % (args.log_interval/2) == 0:
+        #     if algo.rudder.replay_buffer.nonzero_percent > 0.75:
+        #         episodes = []
+        #         for my_i in range(algo.rudder.replay_buffer.max_size):
+        #             episodes.append(algo.rudder.replay_buffer.get_episode_from_tensors(my_i))
+        #         with open('replayBuffer' + str(status['i']) + '.pkl', 'wb') as f:
+        #             pickle.dump(episodes, f)
         if status['i'] % args.log_interval == 0:
-            if algo.rudder.replay_buffer.buffer_full():
-                with open('rudderWidi'+str(status['i'])+'.pkl','wb') as f:
-                    pickle.dump(algo.rudder,f)
+            # if algo.rudder.replay_buffer.nonzero_percent>0.0:
+            episodes=[]
+            for my_i in range(algo.rudder.replay_buffer.max_size):
+                episodes.append(algo.rudder.replay_buffer.get_episode_from_tensors(my_i))
+            with open('replays4/replayBuffer'+str(status['i'])+'.pkl','wb') as f:
+                pickle.dump(episodes,f)
 
             total_ellapsed_time = int(time.time() - total_start_time)
             fps = logs["num_frames"] / (update_end_time - update_start_time)

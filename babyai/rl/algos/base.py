@@ -133,7 +133,7 @@ class BaseAlgo(ABC):
         self.queue_into_rudder = None
         self.queue_back_from_rudder = None
 
-    def update_rudder_and_rescale_rewards(self, update_nr, i, queue_into_rudder, queue_back_from_rudder, embedding,
+    def update_rudder_and_rescale_rewards(self,obs, update_nr, i, queue_into_rudder, queue_back_from_rudder, embedding,
                                           action, rewards, done,
                                           instr, image, value):
         ### SYNCHRONOUS
@@ -143,8 +143,9 @@ class BaseAlgo(ABC):
         debug = False
         rewards=rewards/20
 
+
         self.rudder.add_timestep_data(debug, queue_into_rudder, embedding, action, rewards, done,
-                                      instr, image, value)
+                                      instr, image, value,obs)
         # if debug:
         #     print("after add_timestep_data", i)
         # if update_nr == 6 and i == 14:
@@ -163,7 +164,10 @@ class BaseAlgo(ABC):
         if self.rudder.replay_buffer.buffer_full() and self.rudder.replay_buffer.encountered_different_returns() and i == 39:
             rudder_loss, last_ts_pred, full_pred = self.rudder.train_full_buffer()
             self.rudder.first_training_done = True
-            print('non zero returns', np.count_nonzero(self.rudder.replay_buffer.fast_returns))
+            nonzeros = np.count_nonzero(self.rudder.replay_buffer.fast_returns)
+            percent = nonzeros/self.rudder.replay_buffer.max_size
+            self.rudder.replay_buffer.nonzero_percent = percent
+            print('non zero returns and percent', nonzeros,percent)
 
             # print(ret)
             # self.rudder_rewards[i] = ret
@@ -267,7 +271,7 @@ class BaseAlgo(ABC):
             # RUDDER entry
             if self.use_rudder:
                 rudder_loss, last_ts_pred, last_rew_mean = \
-                    self.update_rudder_and_rescale_rewards(update_nr, i, self.queue_into_rudder,
+                    self.update_rudder_and_rescale_rewards(obs,update_nr, i, self.queue_into_rudder,
                                                            self.queue_back_from_rudder, embedding,
                                                            action, self.rewards[i], done, preprocessed_obs.instr,
                                                            preprocessed_obs.image, value)
