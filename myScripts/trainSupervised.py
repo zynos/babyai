@@ -12,6 +12,7 @@ import numpy as np
 import random
 from sklearn.model_selection import train_test_split
 import matplotlib.image as mpimg
+import datetime
 
 
 class Training:
@@ -21,8 +22,9 @@ class Training:
         self.grad_norms = []
         self.rudder = Rudder()
         self.device = "cuda"
-        self.use_widi_lstm = False
+        self.use_widi_lstm = True
         self.action_only = False
+        self.rudder.device = self.device
         self.rudder.net = Net(image_dim=128, instr_dim=128, ac_embed_dim=128, action_space=7, device=self.device,
                               use_widi=self.use_widi_lstm, action_only=self.action_only).to(self.device)
         self.rudder.use_transformer = True
@@ -32,7 +34,7 @@ class Training:
         self.lr = lr = 1e-6
         self.weight_dec = 1e-6
         self.rudder.optimizer = torch.optim.Adam(self.rudder.net.parameters(), lr=self.lr, weight_decay=self.weight_dec)
-        self.rudder.use_transformer = True
+        self.rudder.use_transformer = False
         self.epochs = 10
 
     # def train_and_set_metrics(self, episode):
@@ -70,6 +72,9 @@ class Training:
         plt.plot(train_losses, label="train loss")
         plt.plot(test_losses, label="test loss")
         plt.legend(loc="upper left")
+        figure = plt.gcf()  # get current figure
+        figure.set_size_inches(19.2, 9.83)
+        plt.savefig("trainResult", dpi=100)
         plt.show()
 
     def random_train_test_split(self, episodes):
@@ -81,7 +86,7 @@ class Training:
 
     def train(self):
         episodes = read_pkl_files(False)
-        # episodes = episodes[:2000]
+        # episodes = episodes[:2]
         get_return_mean(episodes)
         train, test = self.random_train_test_split(episodes)
         train_losses = []
@@ -89,7 +94,7 @@ class Training:
         returns = []
 
         for i in range(self.epochs):
-            print(i)
+            print(i,datetime.datetime.now().time())
             tmp_loss = []
             for ep in train:
                 _, _, ep, _ = self.rudder.train_and_set_metrics(ep)
@@ -106,18 +111,23 @@ class Training:
             epoch_loss = np.mean(tmp_loss)
             print("test loss", epoch_loss)
             test_losses.append(epoch_loss)
+            fname="MyModel"+str(i)+".pt"
+            torch.save(self.rudder.net.state_dict(),fname )
+            self.rudder.net.load_state_dict(torch.load(fname))
+
 
         self.plot(returns, train_losses, test_losses)
         torch.save(self.rudder.net.state_dict(), "MyModel.pt")
 
-    def plot_reward_redistribution(self, orig_rews, redistributed_rews, actions, ax, i):
+    def plot_reward_redistribution(self, orig_rews, redistributed_rews, actions, ax, i,label,plot_orig):
         action_dict = {0: "turn left", 1: "turn right", 2: "move forward", 3: "pick up", 4: "drop", 5: "toggle",
                        6: "done"}
         actions = [action_dict[a.item()] for a in actions]
         rews = orig_rews.cpu().numpy()
         redistributed_rews = redistributed_rews.cpu().squeeze().numpy()
-        ax.plot(rews, label="original rewards")
-        ax.plot(redistributed_rews, label="redistributed rewards")
+        if plot_orig:
+            ax.plot(rews, label="original rewards")
+        ax.plot(redistributed_rews, label="redistributed rewards "+str(label))
         ax.set_xticks(list(range(len(actions))))
         ax.set_xticklabels(actions, rotation=90)
         ax.legend(loc="upper right")
@@ -126,22 +136,46 @@ class Training:
         return actions[i]
         # plt.show()
 
+    def get_predictions_from_different_models(self,short_episode):
+        path = "models/"
+        files = os.listdir(path)
+        ret =[]
+        for f in files:
+            print(f)
+            if "widi" in f:
+                self.rudder.net = Net(image_dim=128, instr_dim=128, ac_embed_dim=128, action_space=7, device=self.device,
+                                      use_widi=True, action_only=self.action_only).to(self.device)
+            else:
+                self.rudder.net = Net(image_dim=128, instr_dim=128, ac_embed_dim=128, action_space=7,
+                                      device=self.device,
+                                      use_widi=False, action_only=self.action_only).to(self.device)
+            # if "trans" in f:
+            #     self.rudder.net = Net(image_dim=128, instr_dim=128, ac_embed_dim=128, action_space=7,
+            #                           device=self.device,
+            #                           use_widi=False, action_only=self.action_only).to(self.device)
+            self.rudder.net.load_state_dict(torch.load(path+f))
+            loss, returns, quality, predictions = self.rudder.feed_network(short_episode)
+            ret.append((predictions.squeeze(),f[:-3]))
+        return ret
+
+
     def evaluate(self):
         env = gym.make("BabyAI-PutNextLocal-v0")
-        self.rudder.net.load_state_dict(torch.load("MyModel.pt"))
+        # self.rudder.net.load_state_dict(torch.load("MyModel.pt"))
         episodes = read_pkl_files(True)
         random.shuffle(episodes)
         short_episode = None
         fist = False
         for e in episodes:
             e: ProcessData
-            if 30 < len(e.dones) < 90:
+            if 20 < len(e.dones) <60:
                 short_episode = e
                 break
                 # if fist:
                 #     break
                 # fist = True
-        loss, returns, quality, predictions = self.rudder.feed_network(short_episode)
+        model_predictions = self.get_predictions_from_different_models(short_episode)
+        # loss, returns, quality, predictions = self.rudder.feed_network(short_episode)
         command = {"put": 1, "the": 2, "grey": 3, "key": 4, "next": 5, "to": 6, "red": 7, "box": 8, "yellow": 9,
                    "blue": 10, "green": 11, "purple": 12, "ball": 13}
         inv_map = {v: k for k, v in command.items()}
@@ -158,9 +192,13 @@ class Training:
 
             renderer = env.render("human")
             r = env.get_obs_render(image.cpu().numpy(), 128)
-            predictions = predictions.squeeze()
-            action = self.plot_reward_redistribution(short_episode.rewards, predictions, short_episode.actions,
-                                                     axarr[0], i)
+            # predictions = predictions.squeeze()
+            plot_orig=True
+            for el in model_predictions:
+
+                action = self.plot_reward_redistribution(short_episode.rewards,el[0], short_episode.actions,
+                                                         axarr[0], i,el[1],plot_orig)
+                plot_orig=False
 
             fname = "myPics/testImag" + str(i)
             r.toImage().save(fname, "PNG")

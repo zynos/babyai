@@ -46,7 +46,7 @@ class Net(nn.Module):
         self.use_widi_lstm = False
         # self.combined_input_dim = action_space.n + self.compressed_embedding + instr_dim + image_dim
         # embed only
-        self.combined_input_dim = action_space.n + ac_embed_dim *2 +1+1 #1 time 1 value
+        self.combined_input_dim = action_space.n + instr_dim + ac_embed_dim +1+1 #1 time 1 value
         self.rudder_lstm_out = 128
         self.max_timesteps=128
         self.embedding_reducer = nn.Linear(ac_embed_dim, self.compressed_embedding)

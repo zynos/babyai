@@ -227,7 +227,7 @@ if __name__ == '__main__':
             episodes=[]
             for my_i in range(algo.rudder.replay_buffer.max_size):
                 episodes.append(algo.rudder.replay_buffer.get_episode_from_tensors(my_i))
-            with open('replays4/replayBuffer'+str(status['i'])+'.pkl','wb') as f:
+            with open('replays5/replayBuffer'+str(status['i'])+'.pkl','wb') as f:
                 pickle.dump(episodes,f)
 
             total_ellapsed_time = int(time.time() - total_start_time)

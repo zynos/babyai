@@ -13,8 +13,9 @@ def initialize_parameters(m):
         if m.bias is not None:
             m.bias.data.fill_(0)
 class ExpertControllerFiLM(nn.Module):
-    def __init__(self, in_features, out_features, in_channels, imm_channels):
+    def __init__(self, in_features, out_features, in_channels, imm_channels,nr):
         super().__init__()
+        self.nr =nr
         self.conv1 = nn.Conv2d(in_channels=in_channels, out_channels=imm_channels, kernel_size=(3, 3), padding=1)
         self.bn1 = nn.BatchNorm2d(imm_channels)
         self.conv2 = nn.Conv2d(in_channels=imm_channels, out_channels=out_features, kernel_size=(3, 3), padding=1)
@@ -69,11 +70,12 @@ class Net(nn.Module):
             if ni < num_module - 1:
                 mod = ExpertControllerFiLM(
                     in_features=self.instr_dim,
-                    out_features=128, in_channels=128, imm_channels=128)
+                    out_features=128, in_channels=128, imm_channels=128,nr=ni)
             else:
+                #output controller
                 mod = ExpertControllerFiLM(
                     in_features=self.instr_dim, out_features=self.image_dim,
-                    in_channels=128, imm_channels=128)
+                    in_channels=128, imm_channels=128,nr=ni)
             self.controllers.append(mod.to(self.device))
 
         encoder_layer = nn.TransformerEncoderLayer(d_model=self.combined_input_dim, nhead=1)
@@ -105,6 +107,11 @@ class Net(nn.Module):
         )
         self.droput = nn.Dropout(p=0.25)
 
+        def lambda_replace_func(x):
+            return x
+
+        self.lambda_replace = lambda_replace_func
+
         if self.use_widi_lstm:
             self.lstm = LSTMLayer(
                 in_features=self.combined_input_dim, out_features=self.rudder_lstm_out, inputformat='NLC',
@@ -117,7 +124,7 @@ class Net(nn.Module):
                 # forget gate: disable all connection (=no forget gate) and disable bias
                 w_fg=False, b_fg=False,
                 # LSTM output activation is set to identity function
-                a_out=lambda x: x
+                a_out=self.lambda_replace
             )
         else:
             self.lstm = nn.LSTM(self.combined_input_dim, self.rudder_lstm_out, batch_first=True)
@@ -159,6 +166,10 @@ class Net(nn.Module):
         #     image, instruction, action, embedding = self.extract_dict_values(dic)
         image, instruction, action, embedding, value = self.extract_process_data(dic)
         if batch:
+            embedding=embedding.to(self.device)
+            instruction = instruction.to(self.device)
+            image = image.to(self.device)
+            value = value.to(self.device)
             # image = self.image_conv(image).squeeze(2).squeeze(2)
             instruction = self.instr_rnn(self.word_embedding(instruction))[1][-1]
             # overloaded = torch.cat([instruction,embedding],dim=-1)
@@ -167,7 +178,7 @@ class Net(nn.Module):
                 x = controler(x, instruction)
             x = F.relu(self.film_pool(x))
             x=x.squeeze(2).squeeze(2)
-            action = torch.nn.functional.one_hot(action, num_classes=self.action_space).float()
+            action = torch.nn.functional.one_hot(action, num_classes=self.action_space).float().to(self.device)
             # x = torch.cat([image, instruction, action, embedding], dim=-1).unsqueeze(0)
             #embedding only
             # approx_time = torch.ones((x.shape[0],1)) * x.shape[0]
