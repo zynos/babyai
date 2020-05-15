@@ -1,5 +1,7 @@
 import os
 import pickle
+import sys
+import time
 import babyai
 import gym
 import matplotlib.pyplot as plt
@@ -13,6 +15,7 @@ import random
 from sklearn.model_selection import train_test_split
 import matplotlib.image as mpimg
 import datetime
+from pathlib import Path
 
 
 class Training:
@@ -22,19 +25,20 @@ class Training:
         self.grad_norms = []
         self.rudder = Rudder()
         self.device = "cuda"
-        self.use_widi_lstm = True
+        self.image_dim = 256
+        self.instr_dim = 256
+        self.use_widi_lstm = False
         self.action_only = False
+        self.rudder.use_transformer = False
         self.rudder.device = self.device
-        self.rudder.net = Net(image_dim=128, instr_dim=128, ac_embed_dim=128, action_space=7, device=self.device,
+        self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128, action_space=7, device=self.device,
                               use_widi=self.use_widi_lstm, action_only=self.action_only).to(self.device)
-        self.rudder.use_transformer = True
         self.rudder.mu = 1
         self.rudder.quality_threshold = 0.8
         self.rudder.clip_value = 0.5
         self.lr = lr = 1e-6
         self.weight_dec = 1e-6
         self.rudder.optimizer = torch.optim.Adam(self.rudder.net.parameters(), lr=self.lr, weight_decay=self.weight_dec)
-        self.rudder.use_transformer = False
         self.epochs = 10
 
     # def train_and_set_metrics(self, episode):
@@ -86,7 +90,7 @@ class Training:
 
     def train(self):
         episodes = read_pkl_files(False)
-        # episodes = episodes[:2]
+        # episodes = episodes[:20]
         get_return_mean(episodes)
         train, test = self.random_train_test_split(episodes)
         train_losses = []
@@ -113,11 +117,11 @@ class Training:
             test_losses.append(epoch_loss)
             fname="MyModel"+str(i)+".pt"
             torch.save(self.rudder.net.state_dict(),fname )
-            self.rudder.net.load_state_dict(torch.load(fname))
+            # self.rudder.net.load_state_dict(torch.load(fname))
 
 
-        self.plot(returns, train_losses, test_losses)
         torch.save(self.rudder.net.state_dict(), "MyModel.pt")
+        self.plot(returns, train_losses, test_losses)
 
     def plot_reward_redistribution(self, orig_rews, redistributed_rews, actions, ax, i,label,plot_orig):
         action_dict = {0: "turn left", 1: "turn right", 2: "move forward", 3: "pick up", 4: "drop", 5: "toggle",
@@ -137,16 +141,16 @@ class Training:
         # plt.show()
 
     def get_predictions_from_different_models(self,short_episode):
-        path = "models/"
+        path = "modelsDoubleImInstr/"
         files = os.listdir(path)
         ret =[]
         for f in files:
             print(f)
             if "widi" in f:
-                self.rudder.net = Net(image_dim=128, instr_dim=128, ac_embed_dim=128, action_space=7, device=self.device,
+                self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128, action_space=7, device=self.device,
                                       use_widi=True, action_only=self.action_only).to(self.device)
             else:
-                self.rudder.net = Net(image_dim=128, instr_dim=128, ac_embed_dim=128, action_space=7,
+                self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128, action_space=7,
                                       device=self.device,
                                       use_widi=False, action_only=self.action_only).to(self.device)
             # if "trans" in f:
@@ -159,7 +163,8 @@ class Training:
         return ret
 
 
-    def evaluate(self):
+    def evaluate(self,start,stop):
+        print(start,stop)
         env = gym.make("BabyAI-PutNextLocal-v0")
         # self.rudder.net.load_state_dict(torch.load("MyModel.pt"))
         episodes = read_pkl_files(True)
@@ -168,7 +173,7 @@ class Training:
         fist = False
         for e in episodes:
             e: ProcessData
-            if 20 < len(e.dones) <60:
+            if start < len(e.dones) <stop:
                 short_episode = e
                 break
                 # if fist:
@@ -190,7 +195,7 @@ class Training:
 
             # use the created array to output your multiple images. In this case I have stacked 4 images vertically
 
-            renderer = env.render("human")
+            # renderer = env.render("human")
             r = env.get_obs_render(image.cpu().numpy(), 128)
             # predictions = predictions.squeeze()
             plot_orig=True
@@ -199,19 +204,28 @@ class Training:
                 action = self.plot_reward_redistribution(short_episode.rewards,el[0], short_episode.actions,
                                                          axarr[0], i,el[1],plot_orig)
                 plot_orig=False
+                # time.sleep(0.5)
+
 
             fname = "myPics/testImag" + str(i)
             r.toImage().save(fname, "PNG")
+
+            del r
             arr = mpimg.imread(fname)
             axarr[1].imshow(arr)
             axarr[1].title.set_text("next action: " + str(action))
             axarr[0].title.set_text(command)
+            os.remove(fname)
             plt.tight_layout()
-            plt.savefig("myPics/coolPic" + str(i), dpi=100)
+            path="myPics/"+str(start)+"-"+str(stop)+"/"
+            Path(path).mkdir(parents=True, exist_ok=True)
+            plt.savefig(path+"coolPic" + str(i), dpi=100)
             plt.close()
             # plt.gcf().close()
             # plt.show()
             # r=r.scaledToHeight(256)
+        env.close()
+        return
 
 
 def read_pkl_file2s():
@@ -230,11 +244,12 @@ def read_pkl_file2s():
 def read_pkl_files(evaluate):
     all_episodes = []
     if evaluate:
-        path = "../scripts/replays2/"
+        path = "../scripts/replays4/"
     else:
-        path = "../scripts/replays/"
+        path = "../scripts/replays3/"
     files = os.listdir(path)
-    for file in files:
+    limit = int(len(files)*0.8)
+    for file in files[:limit]:
         with open(path + file, "rb") as f:
             episodes = pickle.load(f)
             all_episodes.extend(episodes)
@@ -250,5 +265,9 @@ def get_return_mean(episodes):
 
 
 # env = gym.make("BabyAI-PutNextLocal-v0")
+sys.settrace
 training = Training()
 training.train()
+# ranges=[(0,12),(12,20),(20,40),(40,60),(60,128),(127,129)]
+# for r in ranges:
+#     training.evaluate(r[0],r[1])
