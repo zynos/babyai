@@ -16,7 +16,6 @@ import datetime
 import torch
 import multiprocessing as mp
 # torch.set_num_threads(1)
-from myScripts import asyncTrain
 import numpy as np
 import subprocess
 
@@ -27,6 +26,7 @@ from babyai.arguments import ArgumentParser
 from babyai.model import ACModel
 from babyai.evaluate import batch_evaluate
 from babyai.utils.agent import ModelAgent
+from myScripts import asyncTrain
 
 if __name__ == '__main__':
     # mp.set_start_method('spawn')
