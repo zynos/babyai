@@ -54,7 +54,12 @@ class InstructionsPreprocessor(object):
                 old_vocab = Vocabulary(load_vocab_from)
                 self.vocab.copy_vocab_from(old_vocab)
             else:
-                raise FileNotFoundError('No pre-trained model under the specified name')
+                if os.path.exists(load_vocab_from):
+                    old_vocab = Vocabulary(load_vocab_from)
+                    self.vocab.copy_vocab_from(old_vocab)
+                    assert len(self.vocab)>0
+                else:
+                    raise FileNotFoundError('No pre-trained model under the specified name')
 
     def __call__(self, obss, device=None):
         raw_instrs = []

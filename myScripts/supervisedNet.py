@@ -35,9 +35,11 @@ class ExpertControllerFiLM(nn.Module):
         return out
 
 class Net(nn.Module):
-    def __init__(self, image_dim,  instr_dim, ac_embed_dim, action_space,device,use_widi,action_only):
+    def __init__(self, image_dim,  instr_dim, ac_embed_dim, action_space,device,use_widi,
+                 action_only,use_transformer=False):
         super(Net, self).__init__()
         self.action_space = action_space
+        self.use_transformer = use_transformer
         self.device=device
         self.image_dim = image_dim
         self.instr_dim = instr_dim
@@ -52,6 +54,7 @@ class Net(nn.Module):
             self.combined_input_dim = action_space + ac_embed_dim *1# +1+1 #1 time 1 value
         else:
             self.combined_input_dim = action_space + image_dim +ac_embed_dim  +1+1 #1 time 1 value
+            self.combined_input_dim = action_space + image_dim + 1   # 1 time 1 value
         self.rudder_lstm_out = 128
         self.max_timesteps=128
         self.embedding_reducer = nn.Linear(ac_embed_dim, self.compressed_embedding)
@@ -187,7 +190,8 @@ class Net(nn.Module):
             if self.action_only:
                 x = torch.cat([x,action], dim=-1).unsqueeze(0)
             else:
-                x = torch.cat([x,action,embedding,approx_time,value.unsqueeze(1)], dim=-1).unsqueeze(0)
+                # x = torch.cat([x,action,embedding,approx_time,value.unsqueeze(1)], dim=-1).unsqueeze(0)
+                x = torch.cat([x, action, approx_time], dim=-1).unsqueeze(0)
 
         else:
             image = self.image_conv(image).squeeze(2).squeeze(2).unsqueeze(0)
@@ -198,7 +202,7 @@ class Net(nn.Module):
         return x
 
     def forward(self, dic, hidden, batch=False, use_transformer=False):
-        # use_trasnformer = True
+        use_transformer = self.use_transformer
         x = self.prepare_input(dic, batch, use_transformer)
         batch_size = x.shape[0]
         # self.init_hidden(batch_size)

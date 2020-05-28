@@ -15,11 +15,13 @@ class Rudder:
 
     def __init__(self):
         # for testing supervised
+        self.aux_loss_multiplier = 0.1
         self.train_timesteps = False
 
     # def __init__(self, mem_dim, nr_procs, obs_space, instr_dim, ac_embed_dim, image_dim, action_space, device):
     #     self.nr_procs = nr_procs
     #     self.use_transformer = False
+    #     self.aux_loss_multiplier = 0.1
     #     self.clip_value = 0.5
     #     self.frames_per_proc = 40
     #     self.replay_buffer = ReplayBuffer(nr_procs, ac_embed_dim, device, self.frames_per_proc)
@@ -63,17 +65,19 @@ class Rudder:
         # loss Le of the prediction of the output at t+10 at each time step t
         le10_loss = 0.0
         # if episode is smaller than 10 the follwoing would produce a NAN
-        if predictions.shape[1]>10:
+        if predictions.shape[1] > 10:
             pred_chunk = predictions[:, 10:]
             le10_loss = torch.mean((pred_chunk - pred_plus_ten_ts[:, :-10]) ** 2)
 
         # le10_loss = self.mse_loss(pred_chunk, pred_plus_ten_ts[:, :-10])
 
         # Combine losses
-        loss = main_loss + 0.01 * (continuous_loss + le10_loss)
-        return loss, quality
+        aux_loss = continuous_loss + le10_loss
+        loss = main_loss + self.aux_loss_multiplier * aux_loss
+        return loss, quality, (main_loss.detach().clone().item(), aux_loss.detach().clone().item())
 
-    # def lossfunction(self, predictions, returns):
+        # def lossfunction(self, predictions, returns):
+
     #     diff = predictions[:, -1] - returns
     #     # Main task: predicting return at last timestep
     #     quality = self.calc_quality(diff)
@@ -196,7 +200,7 @@ class Rudder:
                 pred[0] = pred[0]
             pred -= previous_timesteps
             # enforce same return
-            returns=torch.sum(torch.tensor(episode.rewards[-to_add:],device=self.device))
+            returns = torch.sum(torch.tensor(episode.rewards[-to_add:], device=self.device))
             predicted_returns = pred.sum()
             prediction_error = returns - predicted_returns
             pred += prediction_error / pred.shape[0]
@@ -272,10 +276,10 @@ class Rudder:
             predictions, pred_plus_ten_ts = self.predict_full_episode(episode)
         returns = torch.sum(episode.rewards, dim=-1).to(self.device)
         # returns = np.sum(episode.rewards)
-        loss, quality = self.paper_loss3(predictions, returns, pred_plus_ten_ts)
+        loss, quality, raw_loss = self.paper_loss3(predictions, returns, pred_plus_ten_ts)
         # loss, quality = self.lossfunction(predictions, returns)
 
-        return loss, returns, quality, predictions.detach().clone()
+        return loss, returns, quality, predictions.detach().clone(), raw_loss
 
     def inference_and_set_metrics(self, episode: ProcessData):
         self.net.eval()
@@ -291,13 +295,13 @@ class Rudder:
                 pass
             assert isinstance(episode.rewards, torch.Tensor)
 
-            loss, returns, quality, _ = self.feed_network(episode)
+            loss, returns, quality, _, raw_loss = self.feed_network(episode)
             loss = loss.detach().item()
             returnn = returns.detach().item()
             episode.loss = loss
             episode.returnn = returnn
 
-            return quality
+            return quality,raw_loss
 
     def train_and_set_metrics_MOCK(self, episode):
         episode.loss = np.random.uniform(0, 1)
@@ -311,7 +315,7 @@ class Rudder:
     def train_and_set_metrics(self, episode):
         self.net.train()
         # loss, returnn, quality = self.train_one_episode(episode)
-        loss, returns, quality, predictions = self.feed_network(episode)
+        loss, returns, quality, predictions,raw_loss = self.feed_network(episode)
 
         ### APEX
         # with amp.scale_loss(loss, self.optimizer) as scaled_loss:
@@ -332,7 +336,7 @@ class Rudder:
         episode.returnn = returnn
 
         # print("loss", loss)
-        return quality, predictions, episode,grad_norm
+        return quality, predictions, episode, grad_norm,raw_loss
 
     def train_full_buffer(self):
         # print("train_full_buffer")
@@ -349,7 +353,7 @@ class Rudder:
                 episodes, episodes_ids = self.replay_buffer.sample_episodes()
                 # episodes = self.replay_buffer.sample_episodes()
                 for i, episode in enumerate(episodes):
-                    quality, predictions, episode, grad_norm  = self.train_and_set_metrics(episode)
+                    quality, predictions, episode, grad_norm, raw_loss = self.train_and_set_metrics(episode)
                     self.grad_norms.append(grad_norm.item())
                     self.replay_buffer.fast_losses[episodes_ids[i]] = episode.loss
                     full_predictions.append(predictions.unsqueeze(0))
@@ -367,8 +371,8 @@ class Rudder:
                          predictions[-1][-1][-1].item(), episode.rewards[-1].item()))
             if False not in qualities_bools:
                 bad_quality = False
-        self.grad_norm=np.mean(self.grad_norms)
-        self.grad_norms=[]
+        self.grad_norm = np.mean(self.grad_norms)
+        self.grad_norms = []
         # full_predictions = torch.cat(full_predictions, dim=-1)
         return np.mean(losses), np.mean(last_timestep_prediction), np.mean(
             last_rewards)  # , torch.mean(full_predictions)

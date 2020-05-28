@@ -117,10 +117,13 @@ def generate_demos(n_episodes, valid, seed, shift=0):
                 just_crashed = False
 
             if reward == 0:
+                demos.append((mission, blosc.pack_array(np.array(images)), directions, actions))
                 if args.on_exception == 'crash':
                     raise Exception("mission failed, the seed is {}".format(seed + len(demos)))
-                just_crashed = True
-                logger.info("mission failed")
+                # just_crashed = True
+                # logger.info("mission failed")
+                    just_crashed = True
+                    logger.info("mission failed")
         except (Exception, AssertionError):
             if args.on_exception == 'crash':
                 raise
