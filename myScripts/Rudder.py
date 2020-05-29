@@ -285,7 +285,7 @@ class Rudder:
 
     def feed_network_batch(self, episodes):
         predictions, hidden, pred_plus_ten_ts = self.net(episodes, None, True, self.use_transformer)
-        returns = torch.sum(torch.stack([episode.rewards for episode in episodes]), dim=-1).to(self.device)
+        returns = torch.stack([torch.sum(episode.rewards) for episode in episodes]).to(self.device)
         returns = returns.reshape(len(returns),1)
         # returns = np.sum(episode.rewards)
         loss, quality, raw_loss = self.paper_loss3(predictions, returns, pred_plus_ten_ts,True)
