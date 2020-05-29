@@ -110,6 +110,8 @@ class Training:
         test = episodes[split_index:]
         return train, test
 
+
+
     def get_losses(self, episodes, train):
         main_loss = []
         aux_loss = []

@@ -2,6 +2,7 @@ import torch
 import torch.nn.functional as F
 import torch.nn as nn
 from torch.nn import LSTMCell
+from torch.nn.utils.rnn import pad_sequence
 
 from widis_lstm_tools.nn import LSTMLayer
 
@@ -145,65 +146,51 @@ class Net(nn.Module):
             action = dic.actions
             embedding = dic.embeddings
             value = dic.values
+        embedding = embedding.to(self.device)
+        instruction = instruction.to(self.device)
+        image = image.to(self.device)
+        value = value.to(self.device)
 
         return image, instruction, action, embedding,value
 
-    # def extract_dict_values(self, dic):
-    #     try:
-    #         image = dic["images"].transpose(0, 2).unsqueeze(0)
-    #         instruction = dic["instructions"].unsqueeze(0)
-    #         action = dic["actions"].unsqueeze(0)
-    #         embedding = dic["embeddings"].unsqueeze(0).unsqueeze(0)
-    #     except:
-    #         image, instruction, action, embedding = self.extract_process_data(dic)
-    #     return image, instruction, action, embedding
+    def prepare_input_batch_and_pad(self, episodes):
+        inputs=[self.prepare_input(episode,None,None).squeeze(0) for episode in episodes]
+        x = pad_sequence(inputs,batch_first=True)
+        # x = torch.cat(inputs)
+        return x
+
 
     def prepare_input(self, dic, batch, use_transformer):
-        # if batch:
-        #     image, instruction, action, embedding = self.extract_process_data(dic)
-        #     # if use_transformer:
-        #     #     image, instruction, action, embedding = self.extract_process_data(dic)
-        #     # else:
-        #     #     image, instruction, action, embedding = self.extract_dict_values(dic)
-        # else:
-        #     image, instruction, action, embedding = self.extract_dict_values(dic)
         image, instruction, action, embedding, value = self.extract_process_data(dic)
-        if batch:
-            embedding=embedding.to(self.device)
-            instruction = instruction.to(self.device)
-            image = image.to(self.device)
-            value = value.to(self.device)
-            # image = self.image_conv(image).squeeze(2).squeeze(2)
-            instruction = self.instr_rnn(self.word_embedding(instruction))[1][-1]
-            # overloaded = torch.cat([instruction,embedding],dim=-1)
-            x = self.image_conv(image)
-            for controler in self.controllers:
-                x = controler(x, instruction)
-            x = F.relu(self.film_pool(x))
-            x=x.squeeze(2).squeeze(2)
-            action = torch.nn.functional.one_hot(action, num_classes=self.action_space).float().to(self.device)
-            # x = torch.cat([image, instruction, action, embedding], dim=-1).unsqueeze(0)
-            #embedding only
-            # approx_time = torch.ones((x.shape[0],1)) * x.shape[0]
-            approx_time = torch.linspace(0,1,self.max_timesteps,device=self.device)[:x.shape[0]].unsqueeze(1)
 
-            if self.action_only:
-                x = torch.cat([x,action], dim=-1).unsqueeze(0)
-            else:
-                # x = torch.cat([x,action,embedding,approx_time,value.unsqueeze(1)], dim=-1).unsqueeze(0)
-                x = torch.cat([x, action, approx_time], dim=-1).unsqueeze(0)
+        # image = self.image_conv(image).squeeze(2).squeeze(2)
+        instruction = self.instr_rnn(self.word_embedding(instruction))[1][-1]
+        # overloaded = torch.cat([instruction,embedding],dim=-1)
+        x = self.image_conv(image)
+        for controler in self.controllers:
+            x = controler(x, instruction)
+        x = F.relu(self.film_pool(x))
+        x=x.squeeze(2).squeeze(2)
+        action = torch.nn.functional.one_hot(action, num_classes=self.action_space).float().to(self.device)
+        # x = torch.cat([image, instruction, action, embedding], dim=-1).unsqueeze(0)
+        #embedding only
+        # approx_time = torch.ones((x.shape[0],1)) * x.shape[0]
+        approx_time = torch.linspace(0,1,self.max_timesteps,device=self.device)[:x.shape[0]].unsqueeze(1)
 
+        if self.action_only:
+            x = torch.cat([x,action], dim=-1).unsqueeze(0)
         else:
-            image = self.image_conv(image).squeeze(2).squeeze(2).unsqueeze(0)
-            instruction = self.instr_rnn(self.word_embedding(instruction))[1][-1].unsqueeze(0)
-            action = torch.nn.functional.one_hot(action, num_classes=self.action_space).float().unsqueeze(0)
-            compressed_embedding = self.embedding_reducer(embedding).unsqueeze(0)
-            x = torch.cat([image, instruction, action, compressed_embedding], dim=-1)
+            # x = torch.cat([x,action,embedding,approx_time,value.unsqueeze(1)], dim=-1).unsqueeze(0)
+            x = torch.cat([x, action, approx_time], dim=-1).unsqueeze(0)
+
         return x
 
     def forward(self, dic, hidden, batch=False, use_transformer=False):
         use_transformer = self.use_transformer
-        x = self.prepare_input(dic, batch, use_transformer)
+        if batch:
+            x = self.prepare_input_batch_and_pad(dic)
+        else:
+            x = self.prepare_input(dic, batch, use_transformer)
         batch_size = x.shape[0]
         # self.init_hidden(batch_size)
         if use_transformer:

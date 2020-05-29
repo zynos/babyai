@@ -85,7 +85,8 @@ if __name__ == '__main__':
     logger = logging.getLogger(__name__)
 
 
-    load_vocab_from = 'newDataColl0.01'
+    # load_vocab_from = 'newDataColl0.01'
+    load_vocab_from = "fresh_64_newValueFunc_GRU"
     # load_vocab_from = None
     # Define obss preprocessor
     # if 'emb' in args.arch:

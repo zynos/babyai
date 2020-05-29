@@ -1,7 +1,8 @@
 import torch
+from myScripts.supervisedNet import Net
 from torch.nn import MSELoss
 # from apex import amp
-from myScripts.MyNet import Net
+# from myScripts.MyNet import Net
 from myScripts.ReplayBuffer import ReplayBuffer, ProcessData
 import numpy as np
 # test test
@@ -13,50 +14,60 @@ from torch.nn.utils import clip_grad_value_
 
 class Rudder:
 
-    def __init__(self):
-        # for testing supervised
-        self.aux_loss_multiplier = 0.1
-        self.train_timesteps = False
-
-    # def __init__(self, mem_dim, nr_procs, obs_space, instr_dim, ac_embed_dim, image_dim, action_space, device):
-    #     self.nr_procs = nr_procs
-    #     self.use_transformer = False
+    # def __init__(self):
+    #     # for testing supervised
     #     self.aux_loss_multiplier = 0.1
-    #     self.clip_value = 0.5
-    #     self.frames_per_proc = 40
-    #     self.replay_buffer = ReplayBuffer(nr_procs, ac_embed_dim, device, self.frames_per_proc)
     #     self.train_timesteps = False
-    #     self.net = Net(image_dim, obs_space, instr_dim, ac_embed_dim, action_space, device).to(device)
-    #     self.optimizer = torch.optim.Adam(self.net.parameters(), lr=1e-6, weight_decay=1e-6)
-    #     # self.optimizer = torch.optim.Adam(self.net.parameters())
-    #     self.device = device
-    #     self.first_training_done = False
-    #     self.mu = 1
-    #     self.quality_threshold = 0.8
-    #     self.last_hidden = [None] * nr_procs
-    #     # For the first timestep we will take (0-predictions[:, :1]) as redistributed reward
-    #     self.last_predicted_reward = [None] * nr_procs
-    #     self.parallel_train_done = False
-    #     self.grad_norms=[]
-    #     self.grad_norm = 0
-    #     self.current_quality = 0
-    #     # mpl = mp.log_to_stderr()
-    #     # mpl.setLevel(logging.INFO)
-    #     self.updates = 0
-    #     self.mse_loss = MSELoss()
-    #     ### APEX
-    #     # self.net, self.optimizer = amp.initialize(self.net, self.optimizer, opt_level="O1")
 
-    def calc_quality(self, diff):
+    def __init__(self, mem_dim, nr_procs, obs_space, instr_dim, ac_embed_dim, image_dim, action_space, device):
+        self.nr_procs = nr_procs
+        self.use_transformer = False
+        self.aux_loss_multiplier = 0.1
+        self.clip_value = 0.5
+        self.frames_per_proc = 40
+        self.replay_buffer = ReplayBuffer(nr_procs, ac_embed_dim, device, self.frames_per_proc)
+        self.train_timesteps = False
+        # self.net = Net(image_dim, obs_space, instr_dim, ac_embed_dim, action_space, device).to(device)
+        self.device = device
+        self.action_only = False
+        self.use_widi_lstm = False
+        self.net = Net(image_dim=image_dim, instr_dim=instr_dim, ac_embed_dim=ac_embed_dim, action_space=7,
+                              device=self.device,
+                              use_widi=self.use_widi_lstm, action_only=self.action_only,
+                              use_transformer=self.use_transformer).to(self.device)
+        self.optimizer = torch.optim.Adam(self.net.parameters(), lr=1e-6, weight_decay=1e-6)
+        # self.optimizer = torch.optim.Adam(self.net.parameters())
+        self.first_training_done = False
+        self.mu = 1
+        self.quality_threshold = 0.8
+        self.last_hidden = [None] * nr_procs
+        # For the first timestep we will take (0-predictions[:, :1]) as redistributed reward
+        self.last_predicted_reward = [None] * nr_procs
+        self.parallel_train_done = False
+        self.grad_norms=[]
+        self.grad_norm = 0
+        self.current_quality = 0
+        # mpl = mp.log_to_stderr()
+        # mpl.setLevel(logging.INFO)
+        self.updates = 0
+        self.mse_loss = MSELoss()
+        ### APEX
+        # self.net, self.optimizer = amp.initialize(self.net, self.optimizer, opt_level="O1")
+
+    def calc_quality(self, diff,batch):
         # diff is g - gT_hat -->  see rudder paper A267
-        quality = 1 - (np.abs(diff.item()) / self.mu) * 1 / (1 - self.quality_threshold)
+        if batch:
+            quality = 1 - ((torch.abs(diff) / self.mu) * 1 / (1 - self.quality_threshold)).detach().clone()
+        else:
+            quality = 1 - (np.abs(diff.item()) / self.mu) * 1 / (1 - self.quality_threshold)
+
         return quality
 
-    def paper_loss3(self, predictions, returns, pred_plus_ten_ts):
+    def paper_loss3(self, predictions, returns, pred_plus_ten_ts,batch=False):
 
         diff = predictions[:, -1] - returns
         # Main task: predicting return at last timestep
-        quality = self.calc_quality(diff)
+        quality = self.calc_quality(diff,batch)
         main_loss = diff ** 2
         # Auxiliary task: predicting final return at every timestep ([..., None] is for correct broadcasting)
         continuous_loss = torch.mean((predictions[:, :] - returns[..., None]) ** 2)
@@ -74,6 +85,9 @@ class Rudder:
         # Combine losses
         aux_loss = continuous_loss + le10_loss
         loss = main_loss + self.aux_loss_multiplier * aux_loss
+        if batch:
+            return loss, quality, (main_loss.detach().clone(), aux_loss.detach().clone())
+
         return loss, quality, (main_loss.detach().clone().item(), aux_loss.detach().clone().item())
 
         # def lossfunction(self, predictions, returns):
@@ -243,7 +257,7 @@ class Rudder:
         return torch.stack(predictions).squeeze()
 
     def predict_full_episode(self, episode: ProcessData):
-        predictions, hidden, pred_plus_ten_ts = self.net(episode, None, True, self.use_transformer)
+        predictions, hidden, pred_plus_ten_ts = self.net(episode, None, False, self.use_transformer)
         return predictions, pred_plus_ten_ts
 
     def predict_every_timestep(self, episode: ProcessData):
@@ -268,6 +282,16 @@ class Rudder:
         quality = 0.1
 
         return loss, returns, quality
+
+    def feed_network_batch(self, episodes):
+        predictions, hidden, pred_plus_ten_ts = self.net(episodes, None, True, self.use_transformer)
+        returns = torch.sum(torch.stack([episode.rewards for episode in episodes]), dim=-1).to(self.device)
+        returns = returns.reshape(len(returns),1)
+        # returns = np.sum(episode.rewards)
+        loss, quality, raw_loss = self.paper_loss3(predictions, returns, pred_plus_ten_ts,True)
+        # loss, quality = self.lossfunction(predictions, returns)
+
+        return loss, returns, quality, predictions.detach().clone(), raw_loss
 
     def feed_network(self, episode: ProcessData):
         if self.train_timesteps:
@@ -312,6 +336,28 @@ class Rudder:
         quality = 0.1
         return quality
 
+    def calc_grad_norm(self):
+        return sum(
+            p.grad.data.norm(2) ** 2 for p in self.net.parameters() if p.grad is not None) ** 0.5
+    
+    def train_and_set_metrics_batch(self,episodes):
+        loss, returns, quality, predictions, raw_loss = self.feed_network_batch(episodes)
+
+
+        loss.mean().backward()
+        grad_norm = self.calc_grad_norm()
+        clip_grad_value_(self.net.parameters(), self.clip_value)
+        self.optimizer.step()
+        self.optimizer.zero_grad()
+        for i,episode in enumerate(episodes):
+            # print("Loss",loss)
+            episode.loss = loss[i].detach().item()
+            episode.returnn = returns[i].detach().item()
+
+        # print("loss", loss)
+        return quality, predictions, episodes, grad_norm, raw_loss
+        
+
     def train_and_set_metrics(self, episode):
         self.net.train()
         # loss, returnn, quality = self.train_one_episode(episode)
@@ -322,8 +368,7 @@ class Rudder:
         #     scaled_loss.backward()
         ###
         loss.backward()
-        grad_norm = sum(
-            p.grad.data.norm(2) ** 2 for p in self.net.parameters() if p.grad is not None) ** 0.5
+        grad_norm = self.calc_grad_norm()
         clip_grad_value_(self.net.parameters(), self.clip_value)
 
         self.optimizer.step()
@@ -351,18 +396,30 @@ class Rudder:
             qualities = []
             for epoch in range(5):
                 episodes, episodes_ids = self.replay_buffer.sample_episodes()
+
                 # episodes = self.replay_buffer.sample_episodes()
+                quality, predictions, episodes, grad_norm, raw_loss = self.train_and_set_metrics_batch(episodes)
+                self.grad_norms.append(grad_norm.item())
                 for i, episode in enumerate(episodes):
-                    quality, predictions, episode, grad_norm, raw_loss = self.train_and_set_metrics(episode)
-                    self.grad_norms.append(grad_norm.item())
                     self.replay_buffer.fast_losses[episodes_ids[i]] = episode.loss
-                    full_predictions.append(predictions.unsqueeze(0))
-                    last_timestep_prediction.append(predictions[0][-1].item())
+                    full_predictions.append(predictions[i].unsqueeze(0))
+                    last_timestep_prediction.append(predictions[i][0][-1].item())
                     losses.append(episode.loss)
                     last_rewards.append(episode.rewards[-1].item())
+                    qualities_bools.add(quality[i] > 0)
+                    qualities.append(np.clip(quality[i], 0.0, 0.01))
+
+                # for i, episode in enumerate(episodes):
+                #     quality, predictions, episode, grad_norm, raw_loss = self.train_and_set_metrics(episode)
+                #     self.grad_norms.append(grad_norm.item())
+                #     self.replay_buffer.fast_losses[episodes_ids[i]] = episode.loss
+                #     full_predictions.append(predictions.unsqueeze(0))
+                #     last_timestep_prediction.append(predictions[0][-1].item())
+                #     losses.append(episode.loss)
+                #     last_rewards.append(episode.rewards[-1].item())
                     # assert episode.returnn==self.replay_buffer.fast_returns[episodes_ids[i]]
-                    qualities_bools.add(quality > 0)
-                    qualities.append(np.clip(quality, 0.0, 0.01))
+                    # qualities_bools.add(quality > 0)
+                    # qualities.append(np.clip(quality, 0.0, 0.01))
             self.current_quality = np.mean(qualities)
             # self.current_quality = 0.25
             print("sample {} return {:.2f} loss {:.4f} predX {:.2f}  rewX {:.2f} pred[-1] {:.2f} rew[-1]  {:.2f} ".
@@ -453,3 +510,5 @@ class Rudder:
     def add_timestep_data_MOCK(self, *args):
         complete_episodes = self.replay_buffer.add_timestep_data(*args)
         self.consider_adding_complete_episodes_to_buffer(complete_episodes)
+
+
