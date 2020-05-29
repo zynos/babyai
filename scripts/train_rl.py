@@ -113,6 +113,7 @@ if __name__ == '__main__':
 
     if torch.cuda.is_available():
         acmodel.cuda()
+        print("using cuda")
 
     # Define actor-critic algo
 

@@ -344,7 +344,7 @@ class Rudder:
         loss, returns, quality, predictions, raw_loss = self.feed_network_batch(episodes)
 
 
-        loss.mean().backward()
+        loss.sum().backward()
         grad_norm = self.calc_grad_norm()
         clip_grad_value_(self.net.parameters(), self.clip_value)
         self.optimizer.step()
@@ -407,7 +407,7 @@ class Rudder:
                     losses.append(episode.loss)
                     last_rewards.append(episode.rewards[-1].item())
                     qualities_bools.add(quality[i] > 0)
-                    qualities.append(np.clip(quality[i], 0.0, 0.01))
+                    qualities.append(np.clip(quality[i].cpu(), 0.0, 0.01))
 
                 # for i, episode in enumerate(episodes):
                 #     quality, predictions, episode, grad_norm, raw_loss = self.train_and_set_metrics(episode)
