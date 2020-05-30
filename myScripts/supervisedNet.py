@@ -82,11 +82,11 @@ class Net(nn.Module):
                     in_channels=128, imm_channels=128,nr=ni)
             self.controllers.append(mod.to(self.device))
 
-        encoder_layer = nn.TransformerEncoderLayer(d_model=self.combined_input_dim, nhead=1)
+        encoder_layer = nn.TransformerEncoderLayer(d_model=self.combined_input_dim, nhead=8)
         # encoder_layer = nn.TransformerEncoderLayer(d_model=self.combined_input_dim * 2, nhead=1)
-        self.transformer_combined_encoder = nn.TransformerEncoder(encoder_layer, num_layers=6)
+        # self.transformer_combined_encoder = nn.TransformerEncoder(encoder_layer, num_layers=6)
         self.fc_out_trans = torch.nn.Linear(self.combined_input_dim, 1)
-        self.fc_out_plus_ten_trans = torch.nn.Linear(self.combined_input_dim, 1)
+        self.fc_out_plus_ten_trans = torch.nn.Linear(self.combined_input_dim, 2)
         self.transformer_input_encoder = nn.TransformerEncoder(encoder_layer, num_layers=1)
 
         self.image_conv_old = nn.Sequential(

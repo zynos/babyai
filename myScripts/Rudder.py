@@ -21,7 +21,7 @@ class Rudder:
 
     def __init__(self, mem_dim, nr_procs, obs_space, instr_dim, ac_embed_dim, image_dim, action_space, device):
         self.nr_procs = nr_procs
-        self.use_transformer = False
+        self.use_transformer = True
         self.aux_loss_multiplier = 0.1
         self.clip_value = 0.5
         self.frames_per_proc = 40
@@ -35,7 +35,7 @@ class Rudder:
                               device=self.device,
                               use_widi=self.use_widi_lstm, action_only=self.action_only,
                               use_transformer=self.use_transformer).to(self.device)
-        self.optimizer = torch.optim.Adam(self.net.parameters(), lr=1e-6, weight_decay=1e-6)
+        self.optimizer = torch.optim.Adam(self.net.parameters(), lr=1e-4, weight_decay=1e-6)
         # self.optimizer = torch.optim.Adam(self.net.parameters())
         self.first_training_done = False
         self.mu = 1

@@ -32,7 +32,7 @@ class Training:
         self.grad_norms = []
         self.rudder = Rudder()
         self.device = "cuda"
-        self.image_dim = 256
+        self.image_dim = 128
         self.instr_dim = 128
         self.use_widi_lstm = False
         self.action_only = False
