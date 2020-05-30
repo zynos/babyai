@@ -14,45 +14,45 @@ from torch.nn.utils import clip_grad_value_
 
 class Rudder:
 
-    # def __init__(self):
-    #     # for testing supervised
-    #     self.aux_loss_multiplier = 0.1
-    #     self.train_timesteps = False
-
-    def __init__(self, mem_dim, nr_procs, obs_space, instr_dim, ac_embed_dim, image_dim, action_space, device):
-        self.nr_procs = nr_procs
-        self.use_transformer = True
+    def __init__(self):
+        # for testing supervised
         self.aux_loss_multiplier = 0.1
-        self.clip_value = 0.5
-        self.frames_per_proc = 40
-        self.replay_buffer = ReplayBuffer(nr_procs, ac_embed_dim, device, self.frames_per_proc)
         self.train_timesteps = False
-        # self.net = Net(image_dim, obs_space, instr_dim, ac_embed_dim, action_space, device).to(device)
-        self.device = device
-        self.action_only = False
-        self.use_widi_lstm = False
-        self.net = Net(image_dim=image_dim, instr_dim=instr_dim, ac_embed_dim=ac_embed_dim, action_space=7,
-                              device=self.device,
-                              use_widi=self.use_widi_lstm, action_only=self.action_only,
-                              use_transformer=self.use_transformer).to(self.device)
-        self.optimizer = torch.optim.Adam(self.net.parameters(), lr=1e-4, weight_decay=1e-6)
-        # self.optimizer = torch.optim.Adam(self.net.parameters())
-        self.first_training_done = False
-        self.mu = 1
-        self.quality_threshold = 0.8
-        self.last_hidden = [None] * nr_procs
-        # For the first timestep we will take (0-predictions[:, :1]) as redistributed reward
-        self.last_predicted_reward = [None] * nr_procs
-        self.parallel_train_done = False
-        self.grad_norms=[]
-        self.grad_norm = 0
-        self.current_quality = 0
-        # mpl = mp.log_to_stderr()
-        # mpl.setLevel(logging.INFO)
-        self.updates = 0
-        self.mse_loss = MSELoss()
-        ### APEX
-        # self.net, self.optimizer = amp.initialize(self.net, self.optimizer, opt_level="O1")
+
+    # def __init__(self, mem_dim, nr_procs, obs_space, instr_dim, ac_embed_dim, image_dim, action_space, device):
+    #     self.nr_procs = nr_procs
+    #     self.use_transformer = True
+    #     self.aux_loss_multiplier = 0.1
+    #     self.clip_value = 0.5
+    #     self.frames_per_proc = 40
+    #     self.replay_buffer = ReplayBuffer(nr_procs, ac_embed_dim, device, self.frames_per_proc)
+    #     self.train_timesteps = False
+    #     # self.net = Net(image_dim, obs_space, instr_dim, ac_embed_dim, action_space, device).to(device)
+    #     self.device = device
+    #     self.action_only = False
+    #     self.use_widi_lstm = False
+    #     self.net = Net(image_dim=image_dim, instr_dim=instr_dim, ac_embed_dim=ac_embed_dim, action_space=7,
+    #                           device=self.device,
+    #                           use_widi=self.use_widi_lstm, action_only=self.action_only,
+    #                           use_transformer=self.use_transformer).to(self.device)
+    #     self.optimizer = torch.optim.Adam(self.net.parameters(), lr=1e-4, weight_decay=1e-6)
+    #     # self.optimizer = torch.optim.Adam(self.net.parameters())
+    #     self.first_training_done = False
+    #     self.mu = 1
+    #     self.quality_threshold = 0.8
+    #     self.last_hidden = [None] * nr_procs
+    #     # For the first timestep we will take (0-predictions[:, :1]) as redistributed reward
+    #     self.last_predicted_reward = [None] * nr_procs
+    #     self.parallel_train_done = False
+    #     self.grad_norms=[]
+    #     self.grad_norm = 0
+    #     self.current_quality = 0
+    #     # mpl = mp.log_to_stderr()
+    #     # mpl.setLevel(logging.INFO)
+    #     self.updates = 0
+    #     self.mse_loss = MSELoss()
+    #     ### APEX
+    #     # self.net, self.optimizer = amp.initialize(self.net, self.optimizer, opt_level="O1")
 
     def calc_quality(self, diff,batch):
         # diff is g - gT_hat -->  see rudder paper A267
