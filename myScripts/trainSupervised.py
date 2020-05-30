@@ -36,7 +36,7 @@ class Training:
         self.instr_dim = 128
         self.use_widi_lstm = False
         self.action_only = False
-        self.rudder.use_transformer = False
+        self.rudder.use_transformer = True
         self.rudder.device = self.device
         self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128, action_space=7,
                               device=self.device,
