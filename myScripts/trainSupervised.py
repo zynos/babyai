@@ -34,9 +34,11 @@ class Training:
         self.device = "cuda"
         self.image_dim = 256
         self.instr_dim = 128
-        self.use_widi_lstm = False
+        self.use_widi_lstm = True
         self.action_only = False
         self.rudder.use_transformer = False
+
+
         self.rudder.device = self.device
         self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128, action_space=7,
                               device=self.device,
@@ -481,9 +483,9 @@ def extract_positive_return_episodes(src_path, dest_path):
 # env = gym.make("BabyAI-PutNextLocal-v0")
 # sys.settrace
 training = Training()
-training.calc_rew_of_generated_episodes("../scripts/demos/train/")
-# do_multiple_evaluations("0.1Aux256Img/")
-training.train_file_based("../scripts/demos/")
+# training.calc_rew_of_generated_episodes("../scripts/demos/train/")
+do_multiple_evaluations("240kDS/")
+# training.train_file_based("../scripts/demos/")
 # training.train_file_based("testi/",False)
 # find_unique_episodes("../scripts/replays7/")
 # calc_memory_saving_ret_mean("../scripts/demos/train/")
