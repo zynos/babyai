@@ -32,11 +32,13 @@ class Training:
         self.grad_norms = []
         self.rudder = Rudder()
         self.device = "cuda"
-        self.image_dim = 128
+        self.image_dim = 256
         self.instr_dim = 128
         self.use_widi_lstm = False
         self.action_only = False
         self.rudder.use_transformer = True
+        self.rudder.transfo_upgrade = False
+
         self.rudder.device = self.device
         self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128, action_space=7,
                               device=self.device,
@@ -45,7 +47,7 @@ class Training:
         self.rudder.mu = 1
         self.rudder.quality_threshold = 0.8
         self.rudder.clip_value = 0.5
-        self.lr = lr = 1e-6
+        self.lr = 1e-6
         self.weight_dec = 1e-6
         self.rudder.optimizer = torch.optim.Adam(self.rudder.net.parameters(), lr=self.lr, weight_decay=self.weight_dec)
         self.epochs = 10
@@ -54,6 +56,8 @@ class Training:
             self.model_type = "widiLSTM"
         if self.rudder.use_transformer:
             self.model_type = "transformerEncoder"
+        if self.rudder.transfo_upgrade:
+            self.model_type = "transformerEncoder_UP"
 
     # def train_and_set_metrics(self, episode):
     #     # loss, returnn, quality = self.train_one_episode(episode)
@@ -109,8 +113,6 @@ class Training:
         train = episodes[:split_index]
         test = episodes[split_index:]
         return train, test
-
-
 
     def get_losses(self, episodes, train):
         main_loss = []
@@ -177,9 +179,10 @@ class Training:
 
         files = os.listdir(path)
         for file in files:
-            batch_loss, returns_ = self.train_one_batch(path + file, training, generated_demos)
-            epoch_losses.append(batch_loss)
-            returns.extend(returns_)
+            if os.path.isfile(path + file):
+                batch_loss, returns_ = self.train_one_batch(path + file, training, generated_demos)
+                epoch_losses.append(batch_loss)
+                returns.extend(returns_)
         return epoch_losses, returns
 
     def train_file_based(self, path_start, generated_demos=True):
@@ -193,7 +196,7 @@ class Training:
             batch_losses, returns_ = self.iterate_files(path, training=True, generated_demos=generated_demos)
             returns.extend(returns_)
             train_losses.append([sum(y) / len(y) for y in zip(*batch_losses)])
-            print("train loss",train_losses[-1])
+            print("train loss", train_losses[-1])
             path = path_start + "validate/"
             batch_losses, returns_ = self.iterate_files(path, training=False, generated_demos=generated_demos)
             returns.extend(returns_)
@@ -237,6 +240,11 @@ class Training:
 
             if "trans" in f:
                 self.rudder.net.use_transformer = True
+                if "UP" in f:
+                    self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128,
+                                          action_space=7, device=self.device,
+                                          use_widi=False, action_only=self.action_only, transfo_upgrade=True).to(
+                        self.device)
             self.rudder.net.load_state_dict(torch.load(path + f))
             loss, returns, quality, predictions, (main_loss, aux_loss) = self.rudder.feed_network(short_episode)
             tmp = torch.zeros_like(predictions)
@@ -322,21 +330,25 @@ class Training:
             p.mission = demo[0][0]["mission"].lower()
             step_count = len(demo)
             reward = 1 - 0.9 * (step_count / max_steps)
+            assert 0 <= reward <1
             if step_count == max_steps:
                 reward = 0
-            p.rewards = torch.zeros(len(demo) - 1)
+            p.rewards = torch.zeros(len(demo))
             p.rewards[-1] = reward
-            p.dones = [False] * (len(demo) - 1) + [True]
+            p.dones = [el[2] for el in demo]
+
             images = np.array([action[0]["image"] for action in demo])
             images = torch.tensor(images, device=device, dtype=torch.float)
             p.images = images
 
             p.actions = torch.tensor([action[1] for action in demo], device="cuda", dtype=torch.long)
-            tokens = re.findall("([a-z]+)", demos[0][0][0]["mission"].lower())
+            tokens = re.findall("([a-z]+)", demo[0][0]["mission"].lower())
+            assert p.mission.split() == tokens
             p.instructions = torch.from_numpy(np.array([vocab[token] for token in tokens])).repeat(len(demo), 1)
             # dummy elements
             p.embeddings = torch.zeros(1)
             p.values = torch.zeros(1)
+            assert len(p.dones) == len(p.rewards) == len(p.actions) == len(p.instructions) == len(p.images) == len(demo)
             transformed.append(p)
         return transformed
 
@@ -364,9 +376,9 @@ class Training:
             torch.cuda.empty_cache()
 
         print(np.mean(rews))
-        print("total eps",total)
-        print("pos ret",pos_rets)
-        print("percent of susccesfull eps",pos_rets/total)
+        print("total eps", total)
+        print("pos ret", pos_rets)
+        print("percent of susccesfull eps", pos_rets / total)
         print("lens")
         print(Counter(lens).most_common(20))
 
@@ -385,17 +397,21 @@ def read_pkl_file2s():
 
 
 def read_pkl_files(evaluate):
+    training2 = Training()
     all_episodes = []
     if evaluate:
-        path = "../scripts/replays4/"
+        path = "../scripts/demos/validate/"
+        # path = "../scripts/replays4/"
     else:
         path = "../scripts/replays3/"
     files = os.listdir(path)
     limit = int(len(files) * 0.8)
-    for file in files[:limit]:
-        with open(path + file, "rb") as f:
-            episodes = pickle.load(f)
-            all_episodes.extend(episodes)
+    for file in files:
+        if os.path.isfile(path + file):
+            with open(path + file, "rb") as f:
+                # episodes = pickle.load(f)
+                episodes = training2.load_generated_demos(path + file)[:1000]
+                all_episodes.extend(episodes)
     print("episodes", len(all_episodes))
     return all_episodes
 
@@ -483,8 +499,8 @@ def extract_positive_return_episodes(src_path, dest_path):
 # env = gym.make("BabyAI-PutNextLocal-v0")
 # sys.settrace
 training = Training()
-training.calc_rew_of_generated_episodes("../scripts/demos/train/")
-# do_multiple_evaluations("0.1Aux256Img/")
+# training.calc_rew_of_generated_episodes("../scripts/demos/train/")
+# do_multiple_evaluations("240kShuffled/")
 training.train_file_based("../scripts/demos/")
 # training.train_file_based("testi/",False)
 # find_unique_episodes("../scripts/replays7/")

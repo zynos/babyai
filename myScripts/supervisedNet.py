@@ -37,10 +37,11 @@ class ExpertControllerFiLM(nn.Module):
 
 class Net(nn.Module):
     def __init__(self, image_dim,  instr_dim, ac_embed_dim, action_space,device,use_widi,
-                 action_only,use_transformer=False):
+                 action_only,use_transformer=False,transfo_upgrade=False):
         super(Net, self).__init__()
         self.action_space = action_space
         self.use_transformer = use_transformer
+        self.transfo_upgraded = transfo_upgrade
         self.device=device
         self.image_dim = image_dim
         self.instr_dim = instr_dim
@@ -82,12 +83,15 @@ class Net(nn.Module):
                     in_channels=128, imm_channels=128,nr=ni)
             self.controllers.append(mod.to(self.device))
 
-        encoder_layer = nn.TransformerEncoderLayer(d_model=self.combined_input_dim, nhead=8)
-        # encoder_layer = nn.TransformerEncoderLayer(d_model=self.combined_input_dim * 2, nhead=1)
-        # self.transformer_combined_encoder = nn.TransformerEncoder(encoder_layer, num_layers=6)
+        if self.transfo_upgraded:
+            encoder_layer = nn.TransformerEncoderLayer(d_model=self.combined_input_dim, nhead=8)
+            self.transformer_input_encoder = nn.TransformerEncoder(encoder_layer, num_layers=2)
+        else:
+            encoder_layer = nn.TransformerEncoderLayer(d_model=self.combined_input_dim, nhead=1)
+            self.transformer_input_encoder = nn.TransformerEncoder(encoder_layer, num_layers=1)
+            self.transformer_combined_encoder = nn.TransformerEncoder(encoder_layer, num_layers=6)
         self.fc_out_trans = torch.nn.Linear(self.combined_input_dim, 1)
-        self.fc_out_plus_ten_trans = torch.nn.Linear(self.combined_input_dim, 2)
-        self.transformer_input_encoder = nn.TransformerEncoder(encoder_layer, num_layers=1)
+        self.fc_out_plus_ten_trans = torch.nn.Linear(self.combined_input_dim, 1)
 
         self.image_conv_old = nn.Sequential(
             nn.Conv2d(in_channels=3, out_channels=16, kernel_size=(2, 2)),
