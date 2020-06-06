@@ -114,10 +114,18 @@ class Training:
         test = episodes[split_index:]
         return train, test
 
+    def chunks(lst, n):
+        """Yield successive n-sized chunks from lst."""
+        for i in range(0, len(lst), n):
+            yield lst[i:i + n]
+
     def get_losses(self, episodes, train):
         main_loss = []
         aux_loss = []
         returns = []
+
+        if train:
+            self.rudder.train_and_set_metrics_batch(episodes[:100])
         for ep in episodes:
             if train:
                 _, _, ep, _, raw_loss = self.rudder.train_and_set_metrics(ep)
@@ -131,36 +139,36 @@ class Training:
 
         return epoch_loss, returns
 
-    def train(self):
-        # episodes = read_pkl_files(False)
-        episodes = self.load_generated_demos()
-        get_return_mean(episodes)
-        episodes = episodes[:20]
-        train, test = self.random_train_test_split(episodes)
-        train_losses = []
-        test_losses = []
-        returns = []
-
-        for i in range(self.epochs):
-            # training
-            print(i, datetime.datetime.now().time())
-            epoch_loss, returns_ = self.get_losses(train, True)
-            returns.extend(returns_)
-            train_losses.append(epoch_loss)
-            print("train loss", epoch_loss)
-
-            # evaluating
-            epoch_loss, returns_ = self.get_losses(test, False)
-            returns.extend(returns_)
-            # train_losses.append(epoch_loss)
-            print("test loss", epoch_loss)
-            test_losses.append(epoch_loss)
-            # fname = "MyModel" + str(i) + ".pt"
-            # torch.save(self.rudder.net.state_dict(), fname)
-            # self.rudder.net.load_state_dict(torch.load(fname))
-
-        torch.save(self.rudder.net.state_dict(), self.model_type + "_model.pt")
-        self.plot(returns, train_losses, test_losses)
+    # def train(self):
+    #     # episodes = read_pkl_files(False)
+    #     episodes = self.load_generated_demos()
+    #     get_return_mean(episodes)
+    #     episodes = episodes[:20]
+    #     train, test = self.random_train_test_split(episodes)
+    #     train_losses = []
+    #     test_losses = []
+    #     returns = []
+    #
+    #     for i in range(self.epochs):
+    #         # training
+    #         print(i, datetime.datetime.now().time())
+    #         epoch_loss, returns_ = self.get_losses(train, True)
+    #         returns.extend(returns_)
+    #         train_losses.append(epoch_loss)
+    #         print("train loss", epoch_loss)
+    #
+    #         # evaluating
+    #         epoch_loss, returns_ = self.get_losses(test, False)
+    #         returns.extend(returns_)
+    #         # train_losses.append(epoch_loss)
+    #         print("test loss", epoch_loss)
+    #         test_losses.append(epoch_loss)
+    #         # fname = "MyModel" + str(i) + ".pt"
+    #         # torch.save(self.rudder.net.state_dict(), fname)
+    #         # self.rudder.net.load_state_dict(torch.load(fname))
+    #
+    #     torch.save(self.rudder.net.state_dict(), self.model_type + "_model.pt")
+    #     self.plot(returns, train_losses, test_losses)
 
     def train_one_batch(self, path, training, generated_demos=True):
         # load training files on after the other

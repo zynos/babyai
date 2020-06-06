@@ -86,7 +86,7 @@ class Rudder:
         aux_loss = continuous_loss + le10_loss
         loss = main_loss + self.aux_loss_multiplier * aux_loss
         if batch:
-            return loss, quality, (main_loss.detach().clone(), aux_loss.detach().clone())
+            return loss, quality, (main_loss.detach().clone().mean(), aux_loss.detach().clone())
 
         return loss, quality, (main_loss.detach().clone().item(), aux_loss.detach().clone().item())
 
@@ -341,10 +341,11 @@ class Rudder:
             p.grad.data.norm(2) ** 2 for p in self.net.parameters() if p.grad is not None) ** 0.5
     
     def train_and_set_metrics_batch(self,episodes):
+        self.net.train()
         loss, returns, quality, predictions, raw_loss = self.feed_network_batch(episodes)
 
 
-        loss.sum().backward()
+        loss.mean().backward()
         grad_norm = self.calc_grad_norm()
         clip_grad_value_(self.net.parameters(), self.clip_value)
         self.optimizer.step()
