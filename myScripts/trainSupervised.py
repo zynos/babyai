@@ -185,6 +185,7 @@ class Training:
                 returns.extend(returns_)
         return epoch_losses, returns
 
+
     def train_file_based(self, path_start, generated_demos=True):
         train_losses = []
         test_losses = []
@@ -495,13 +496,31 @@ def extract_positive_return_episodes(src_path, dest_path):
     with open(dest_path + "pos_rets.pkl", "wb") as f:
         pickle.dump(pos_rets, f)
 
+def create_episode_len_histogram(path):
+    files = os.listdir(path)
+    lens = []
+    total=0
+    for file in files:
+        with open(path + file, "rb") as f:
+            episodes = pickle.load(f)
+            total +=len(episodes)
+            [lens.append(len(e[2])) for e in episodes]
+    c = Counter(lens)
+    print(c)
+    rewards = [1 - 0.9 * (l / 128) for l in lens]
+    mean_rew= np.mean(rewards)
+    plt.title("mean return {:.2f}".format(mean_rew)+" episodes: "+str(total))
+    plt.bar(c.keys(), c.values())
+    plt.show()
 
+
+create_episode_len_histogram("../scripts/demos/train/")
 # env = gym.make("BabyAI-PutNextLocal-v0")
 # sys.settrace
 training = Training()
 # training.calc_rew_of_generated_episodes("../scripts/demos/train/")
 # do_multiple_evaluations("240kShuffled/")
-training.train_file_based("../scripts/demos/")
+# training.train_file_based("../scripts/demos/")
 # training.train_file_based("testi/",False)
 # find_unique_episodes("../scripts/replays7/")
 # calc_memory_saving_ret_mean("../scripts/demos/train/")
