@@ -497,7 +497,7 @@ def extract_positive_return_episodes(src_path, dest_path):
         pickle.dump(pos_rets, f)
 
 def create_episode_len_histogram(path):
-    files = os.listdir(path)
+    files = [f for f in os.listdir(path) if os.path.isfile(path + f)]
     lens = []
     total=0
     for file in files:
@@ -509,6 +509,8 @@ def create_episode_len_histogram(path):
     print(c)
     rewards = [1 - 0.9 * (l / 128) for l in lens]
     mean_rew= np.mean(rewards)
+    plt.xlabel("episode length")
+    plt.ylabel("count")
     plt.title("mean return {:.2f}".format(mean_rew)+" episodes: "+str(total))
     plt.bar(c.keys(), c.values())
     plt.show()
