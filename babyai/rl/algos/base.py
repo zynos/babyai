@@ -124,7 +124,7 @@ class BaseAlgo(ABC):
         self.use_rudder = True
         self.rudder = Rudder(acmodel.memory_dim, self.num_procs, acmodel.obs_space,
                              acmodel.instr_dim, acmodel.memory_dim, acmodel.image_dim,
-                             acmodel.action_space, self.device)
+                             acmodel.action_space.n, self.device)
         # self.ctx=mp.get_context("spawn")
         # self.queue=self.ctx.Queue()
         # self.async_func=start_background_process

@@ -257,22 +257,7 @@ class Training:
             ret.append((predictions.squeeze(), f[:-3]))
         return ret
 
-    def evaluate(self, start, stop, path_start, model_path):
-        print(start, stop)
-        env = gym.make("BabyAI-PutNextLocal-v0")
-        # self.rudder.net.load_state_dict(torch.load("MyModel.pt"))
-        episodes = read_pkl_files(True)
-        random.shuffle(episodes)
-        short_episode = None
-        fist = False
-        for e in episodes:
-            e: ProcessData
-            if start < len(e.dones) < stop:
-                short_episode = e
-                break
-                # if fist:
-                #     break
-                # fist = True
+    def evaluate_one_episode(self,start, stop, path_start, model_path, short_episode,env):
         model_predictions = self.get_predictions_from_different_models(model_path, short_episode)
         # loss, returns, quality, predictions = self.rudder.feed_network(short_episode)
         command = {"put": 1, "the": 2, "grey": 3, "key": 4, "next": 5, "to": 6, "red": 7, "box": 8, "yellow": 9,
@@ -319,6 +304,25 @@ class Training:
             # r=r.scaledToHeight(256)
         env.close()
         return
+
+    def evaluate(self, start, stop, path_start, model_path):
+        print(start, stop)
+        env = gym.make("BabyAI-PutNextLocal-v0")
+        # self.rudder.net.load_state_dict(torch.load("MyModel.pt"))
+        episodes = read_pkl_files(True)
+        random.shuffle(episodes)
+        short_episode = None
+        fist = False
+        for e in episodes:
+            e: ProcessData
+            if start < len(e.dones) < stop:
+                short_episode = e
+                break
+                # if fist:
+                #     break
+                # fist = True
+        self.evaluate_one_episode(start, stop, path_start, model_path, short_episode, env)
+
 
     def load_generated_demos(self, path, max_steps=128):
         with open(path, "rb") as f:

@@ -73,7 +73,7 @@ class Net(nn.Module):
             self.controllers.append(mod.to(self.device))
 
         encoder_layer = nn.TransformerEncoderLayer(d_model=self.combined_input_dim, nhead=1)
-        encoder_layer = nn.TransformerEncoderLayer(d_model=self.combined_input_dim * 2, nhead=1)
+        # encoder_layer = nn.TransformerEncoderLayer(d_model=self.combined_input_dim * 2, nhead=1)
         self.transformer_combined_encoder = nn.TransformerEncoder(encoder_layer, num_layers=6)
         self.fc_out_trans = torch.nn.Linear(self.combined_input_dim, 1)
         self.transformer_input_encoder = nn.TransformerEncoder(encoder_layer, num_layers=1)
