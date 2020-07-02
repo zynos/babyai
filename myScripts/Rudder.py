@@ -15,7 +15,7 @@ class Rudder:
 
     def __init__(self):
         # for testing supervised
-        self.aux_loss_multiplier = 0.1
+
         self.train_timesteps = False
 
     # def __init__(self, mem_dim, nr_procs, obs_space, instr_dim, ac_embed_dim, image_dim, action_space, device):

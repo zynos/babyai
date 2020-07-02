@@ -32,25 +32,27 @@ class Training:
         self.grad_norms = []
         self.rudder = Rudder()
         self.device = "cuda"
+        print("using ",self.device)
         self.image_dim = 128
         self.instr_dim = 128
-        self.use_widi_lstm = False
+        self.use_widi_lstm = True
         self.action_only = False
         self.rudder.use_transformer = False
         self.rudder.transfo_upgrade = False
+        self.rudder.aux_loss_multiplier = 0.5
 
         self.rudder.device = self.device
         self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128, action_space=7,
                               device=self.device,
                               use_widi=self.use_widi_lstm, action_only=self.action_only,
-                              use_transformer=self.rudder.use_transformer).to(self.device)
+                              use_transformer=self.rudder.use_transformer,transfo_upgrade=self.rudder.transfo_upgrade).to(self.device)
         self.rudder.mu = 1
         self.rudder.quality_threshold = 0.8
         self.rudder.clip_value = 0.5
-        self.lr = 1e-6
+        self.lr = 1e-5
         self.weight_dec = 1e-6
         self.rudder.optimizer = torch.optim.Adam(self.rudder.net.parameters(), lr=self.lr, weight_decay=self.weight_dec)
-        self.epochs = 10
+        self.epochs = 5
         self.model_type = "stdLSTm"
         if self.use_widi_lstm:
             self.model_type = "widiLSTM"
@@ -131,36 +133,36 @@ class Training:
 
         return epoch_loss, returns
 
-    def train(self):
-        # episodes = read_pkl_files(False)
-        episodes = self.load_generated_demos()
-        get_return_mean(episodes)
-        episodes = episodes[:20]
-        train, test = self.random_train_test_split(episodes)
-        train_losses = []
-        test_losses = []
-        returns = []
-
-        for i in range(self.epochs):
-            # training
-            print(i, datetime.datetime.now().time())
-            epoch_loss, returns_ = self.get_losses(train, True)
-            returns.extend(returns_)
-            train_losses.append(epoch_loss)
-            print("train loss", epoch_loss)
-
-            # evaluating
-            epoch_loss, returns_ = self.get_losses(test, False)
-            returns.extend(returns_)
-            # train_losses.append(epoch_loss)
-            print("test loss", epoch_loss)
-            test_losses.append(epoch_loss)
-            # fname = "MyModel" + str(i) + ".pt"
-            # torch.save(self.rudder.net.state_dict(), fname)
-            # self.rudder.net.load_state_dict(torch.load(fname))
-
-        torch.save(self.rudder.net.state_dict(), self.model_type + "_model.pt")
-        self.plot(returns, train_losses, test_losses)
+    # def train(self):
+    #     # episodes = read_pkl_files(False)
+    #     episodes = self.load_generated_demos()
+    #     get_return_mean(episodes)
+    #     episodes = episodes[:20]
+    #     train, test = self.random_train_test_split(episodes)
+    #     train_losses = []
+    #     test_losses = []
+    #     returns = []
+    #
+    #     for i in range(self.epochs):
+    #         # training
+    #         print(i, datetime.datetime.now().time())
+    #         epoch_loss, returns_ = self.get_losses(train, True)
+    #         returns.extend(returns_)
+    #         train_losses.append(epoch_loss)
+    #         print("train loss", epoch_loss)
+    #
+    #         # evaluating
+    #         epoch_loss, returns_ = self.get_losses(test, False)
+    #         returns.extend(returns_)
+    #         # train_losses.append(epoch_loss)
+    #         print("test loss", epoch_loss)
+    #         test_losses.append(epoch_loss)
+    #         # fname = "MyModel" + str(i) + ".pt"
+    #         # torch.save(self.rudder.net.state_dict(), fname)
+    #         # self.rudder.net.load_state_dict(torch.load(fname))
+    #
+    #     torch.save(self.rudder.net.state_dict(), self.model_type + "_model.pt")
+    #     self.plot(returns, train_losses, test_losses)
 
     def train_one_batch(self, path, training, generated_demos=True):
         # load training files on after the other
@@ -248,10 +250,10 @@ class Training:
                         self.device)
             self.rudder.net.load_state_dict(torch.load(path + f))
             loss, returns, quality, predictions, (main_loss, aux_loss) = self.rudder.feed_network(short_episode)
-            tmp = torch.zeros_like(predictions)
-            diff = predictions[:, 1:] - predictions[:, :-1]
-            tmp[:, 1:] = diff
-            predictions = tmp
+            # tmp = torch.zeros_like(predictions)
+            # diff = predictions[:, 1:] - predictions[:, :-1]
+            # tmp[:, 1:] = diff
+            # predictions = tmp
             ret.append((predictions.squeeze(), f[:-3]))
         return ret
 
@@ -507,21 +509,23 @@ def create_episode_len_histogram(path):
             [lens.append(len(e[2])) for e in episodes]
     c = Counter(lens)
     print(c)
-    rewards = [1 - 0.9 * (l / 128) for l in lens]
+    max_len = 128
+    rewards = [1 - 0.9 * (l / max_len) for l in lens]
     mean_rew= np.mean(rewards)
     plt.xlabel("episode length")
     plt.ylabel("count")
-    plt.title("mean return {:.2f}".format(mean_rew)+" episodes: "+str(total))
+    plt.yscale('log')
+    plt.title("mean return {:.2f}".format(mean_rew)+" episodes: "+str(total)+" failed: "+str(c[max_len]))
     plt.bar(c.keys(), c.values())
     plt.show()
 
 
-create_episode_len_histogram("../scripts/demos/train/")
+# create_episode_len_histogram("../scripts/demos/train/")
 # env = gym.make("BabyAI-PutNextLocal-v0")
 # sys.settrace
 training = Training()
 # training.calc_rew_of_generated_episodes("../scripts/demos/train/")
-# do_multiple_evaluations("240kShuffled/")
+do_multiple_evaluations("1Million0.5Aux1e-5LR/")
 # training.train_file_based("../scripts/demos/")
 # training.train_file_based("testi/",False)
 # find_unique_episodes("../scripts/replays7/")
