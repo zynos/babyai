@@ -32,7 +32,7 @@ class Training:
         self.grad_norms = []
         self.rudder = Rudder()
         self.device = "cuda"
-        print("using ",self.device)
+        print("using ", self.device)
         self.image_dim = 128
         self.instr_dim = 128
         self.use_widi_lstm = True
@@ -45,7 +45,8 @@ class Training:
         self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128, action_space=7,
                               device=self.device,
                               use_widi=self.use_widi_lstm, action_only=self.action_only,
-                              use_transformer=self.rudder.use_transformer,transfo_upgrade=self.rudder.transfo_upgrade).to(self.device)
+                              use_transformer=self.rudder.use_transformer,
+                              transfo_upgrade=self.rudder.transfo_upgrade).to(self.device)
         self.rudder.mu = 1
         self.rudder.quality_threshold = 0.8
         self.rudder.clip_value = 0.5
@@ -187,7 +188,6 @@ class Training:
                 returns.extend(returns_)
         return epoch_losses, returns
 
-
     def train_file_based(self, path_start, generated_demos=True):
         train_losses = []
         test_losses = []
@@ -257,7 +257,7 @@ class Training:
             ret.append((predictions.squeeze(), f[:-3]))
         return ret
 
-    def evaluate_one_episode(self,start, stop, path_start, model_path, short_episode,env):
+    def evaluate_one_episode(self, start, stop, path_start, model_path, short_episode, env):
         model_predictions = self.get_predictions_from_different_models(model_path, short_episode)
         # loss, returns, quality, predictions = self.rudder.feed_network(short_episode)
         command = {"put": 1, "the": 2, "grey": 3, "key": 4, "next": 5, "to": 6, "red": 7, "box": 8, "yellow": 9,
@@ -305,10 +305,43 @@ class Training:
         env.close()
         return
 
-    def evaluate(self, start, stop, path_start, model_path):
+    def create_ranged_episode(self, episode, upper_limit):
+        new_episode = ProcessData()
+        new_episode.rewards = episode.rewards[:upper_limit]
+        new_episode.actions = episode.actions[:upper_limit]
+        new_episode.images = episode.images[:upper_limit]
+        new_episode.instructions = episode.instructions[:upper_limit]
+        new_episode.dones = episode.dones[:upper_limit]
+        assert len(episode.embeddings) == 1
+        assert len(episode.values) == 1
+        new_episode.embeddings = episode.embeddings
+        new_episode.values = episode.values
+        new_episode.mission = episode.mission
+        return new_episode
+
+    def create_partial_episodes_from_failed_episode(self, episode, parts=4):
+        episode: ProcessData
+        ret = []
+        assert len(episode.rewards) == 128
+        for i in range(1, parts):
+            upper_limit = int(i * (128 / parts))
+            new_episode = self.create_ranged_episode(episode, upper_limit)
+            ret.append(new_episode)
+        ret.append(episode)
+        return ret
+
+    def visualize_failed_episode_in_parts(self, start, stop, path_start, model_path):
         print(start, stop)
         env = gym.make("BabyAI-PutNextLocal-v0")
         # self.rudder.net.load_state_dict(torch.load("MyModel.pt"))
+        short_episode = self.get_random_episode_from_range(start, stop)
+        episodes = self.create_partial_episodes_from_failed_episode(short_episode)
+        new_start = 0
+        for e in episodes:
+            new_stop = len(e.dones)
+            self.evaluate_one_episode(new_start, new_stop, path_start, model_path, e, env)
+
+    def get_random_episode_from_range(self, start, stop):
         episodes = read_pkl_files(True)
         random.shuffle(episodes)
         short_episode = None
@@ -318,11 +351,15 @@ class Training:
             if start < len(e.dones) < stop:
                 short_episode = e
                 break
-                # if fist:
-                #     break
-                # fist = True
-        self.evaluate_one_episode(start, stop, path_start, model_path, short_episode, env)
+        assert short_episode is not None
+        return short_episode
 
+    def evaluate(self, start, stop, path_start, model_path):
+        print(start, stop)
+        env = gym.make("BabyAI-PutNextLocal-v0")
+        # self.rudder.net.load_state_dict(torch.load("MyModel.pt"))
+        short_episode = self.get_random_episode_from_range(start, stop)
+        self.evaluate_one_episode(start, stop, path_start, model_path, short_episode, env)
 
     def load_generated_demos(self, path, max_steps=128):
         with open(path, "rb") as f:
@@ -337,7 +374,7 @@ class Training:
             p.mission = demo[0][0]["mission"].lower()
             step_count = len(demo)
             reward = 1 - 0.9 * (step_count / max_steps)
-            assert 0 <= reward <1
+            assert 0 <= reward < 1
             if step_count == max_steps:
                 reward = 0
             p.rewards = torch.zeros(len(demo))
@@ -502,34 +539,35 @@ def extract_positive_return_episodes(src_path, dest_path):
     with open(dest_path + "pos_rets.pkl", "wb") as f:
         pickle.dump(pos_rets, f)
 
+
 def create_episode_len_histogram(path):
     files = [f for f in os.listdir(path) if os.path.isfile(path + f)]
     lens = []
-    total=0
+    total = 0
     for file in files:
         with open(path + file, "rb") as f:
             episodes = pickle.load(f)
-            total +=len(episodes)
+            total += len(episodes)
             [lens.append(len(e[2])) for e in episodes]
     c = Counter(lens)
     print(c)
     max_len = 128
     rewards = [1 - 0.9 * (l / max_len) for l in lens]
-    mean_rew= np.mean(rewards)
+    mean_rew = np.mean(rewards)
     plt.xlabel("episode length")
     plt.ylabel("count")
     plt.yscale('log')
-    plt.title("mean return {:.2f}".format(mean_rew)+" episodes: "+str(total)+" failed: "+str(c[max_len]))
+    plt.title("mean return {:.2f}".format(mean_rew) + " episodes: " + str(total) + " failed: " + str(c[max_len]))
     plt.bar(c.keys(), c.values())
     plt.show()
-
 
 # create_episode_len_histogram("../scripts/demos/train/")
 # env = gym.make("BabyAI-PutNextLocal-v0")
 # sys.settrace
 training = Training()
+training.visualize_failed_episode_in_parts(127,129,"failedVisualized/","1Million0.5Aux1e-5LR/")
 # training.calc_rew_of_generated_episodes("../scripts/demos/train/")
-do_multiple_evaluations("1Million0.5Aux1e-5LR/")
+# do_multiple_evaluations("1Million0.5Aux1e-5LR/")
 # training.train_file_based("../scripts/demos/")
 # training.train_file_based("testi/",False)
 # find_unique_episodes("../scripts/replays7/")
