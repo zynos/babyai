@@ -25,7 +25,7 @@ from pathlib import Path
 
 class Training:
 
-    def __init__(self):
+    def __init__(self,use_transformer=False):
 
         self.out_image_height = 10.8
         self.total_pics = 0
@@ -35,9 +35,9 @@ class Training:
         print("using ", self.device)
         self.image_dim = 128
         self.instr_dim = 128
-        self.use_widi_lstm = True
+        self.use_widi_lstm = False
         self.action_only = False
-        self.rudder.use_transformer = False
+        self.rudder.use_transformer = use_transformer
         self.rudder.transfo_upgrade = False
         self.rudder.aux_loss_multiplier = 0.5
 
@@ -50,7 +50,7 @@ class Training:
         self.rudder.mu = 1
         self.rudder.quality_threshold = 0.8
         self.rudder.clip_value = 0.5
-        self.lr = 1e-5
+        self.lr = 1e-6
         self.weight_dec = 1e-6
         self.rudder.optimizer = torch.optim.Adam(self.rudder.net.parameters(), lr=self.lr, weight_decay=self.weight_dec)
         self.epochs = 5
@@ -467,11 +467,11 @@ def get_return_mean(episodes):
     print("mean return", np.mean(rets))
 
 
-def do_multiple_evaluations(model_path):
+def do_multiple_evaluations(model_path,parent_folder):
     ranges = [(0, 12), (12, 20), (20, 40), (40, 60), (60, 128), (127, 129)]
     runs = 3
     for i in range(runs):
-        path = "run" + str(i) + "/"
+        path = parent_folder+ "run" + str(i) + "/"
         # Path(path).mkdir(parents=True, exist_ok=True)
         for r in ranges:
             training.evaluate(r[0], r[1], path, model_path)
@@ -565,10 +565,10 @@ def create_episode_len_histogram(path):
 # env = gym.make("BabyAI-PutNextLocal-v0")
 # sys.settrace
 training = Training()
-training.visualize_failed_episode_in_parts(127,129,"failedVisualized/","1Million0.5Aux1e-5LR/")
+# training.visualize_failed_episode_in_parts(127,129,"failedVisualized1Million0.5Aux1e-5LRNoAuxTime/","1Million0.5Aux1e-5LRNoAuxTime/",)
 # training.calc_rew_of_generated_episodes("../scripts/demos/train/")
-# do_multiple_evaluations("1Million0.5Aux1e-5LR/")
-# training.train_file_based("../scripts/demos/")
+# do_multiple_evaluations("1Million0.5Aux1e-5LRNoAuxTime/","EVAL_1Million0.5Aux1e-5LRNoAuxTime/")
+training.train_file_based("../scripts/demos/")
 # training.train_file_based("testi/",False)
 # find_unique_episodes("../scripts/replays7/")
 # calc_memory_saving_ret_mean("../scripts/demos/train/")

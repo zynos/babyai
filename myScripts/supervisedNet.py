@@ -55,7 +55,8 @@ class Net(nn.Module):
             self.combined_input_dim = action_space + ac_embed_dim *1# +1+1 #1 time 1 value
         else:
             # self.combined_input_dim = action_space + image_dim +ac_embed_dim  +1+1 #1 time 1 value
-            self.combined_input_dim = action_space + image_dim + 1   # 1 time 1 value
+            # self.combined_input_dim = action_space + image_dim + 1   # 1 time 1 value
+            self.combined_input_dim = action_space + image_dim  # without approx time
         self.rudder_lstm_out = 128
         self.max_timesteps=128
         self.embedding_reducer = nn.Linear(ac_embed_dim, self.compressed_embedding)
@@ -189,13 +190,14 @@ class Net(nn.Module):
             # x = torch.cat([image, instruction, action, embedding], dim=-1).unsqueeze(0)
             #embedding only
             # approx_time = torch.ones((x.shape[0],1)) * x.shape[0]
-            approx_time = torch.linspace(0,1,self.max_timesteps,device=self.device)[:x.shape[0]].unsqueeze(1)
+
+            # approx_time = torch.linspace(0,1,self.max_timesteps,device=self.device)[:x.shape[0]].unsqueeze(1)
 
             if self.action_only:
                 x = torch.cat([x,action], dim=-1).unsqueeze(0)
             else:
                 # x = torch.cat([x,action,embedding,approx_time,value.unsqueeze(1)], dim=-1).unsqueeze(0)
-                x = torch.cat([x, action, approx_time], dim=-1).unsqueeze(0)
+                x = torch.cat([x, action], dim=-1).unsqueeze(0)
 
         else:
             image = self.image_conv(image).squeeze(2).squeeze(2).unsqueeze(0)
@@ -208,6 +210,8 @@ class Net(nn.Module):
     def forward(self, dic, hidden, batch=False, use_transformer=False):
         use_transformer = self.use_transformer
         x = self.prepare_input(dic, batch, use_transformer)
+        # padded = torch.cat([x,torch.zeros(1,128-x.shape[1], self.combined_input_dim,device=self.device)],dim=1)
+        # x=padded
         batch_size = x.shape[0]
         # self.init_hidden(batch_size)
         if use_transformer:
