@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import torch
 import babyai.rl
 from babyai.utils.demos import transform_demos
+from myScripts.MyACModel import ACModelRudder
 from myScripts.ReplayBuffer import ProcessData
 from myScripts.supervisedNet import Net
 from torch.nn.utils import clip_grad_value_
@@ -41,13 +42,12 @@ class Training:
         self.rudder.use_transformer = use_transformer
         self.rudder.transfo_upgrade = False
         self.rudder.aux_loss_multiplier = 0.5
+        env = gym.make("BabyAI-PutNextLocal-v0")
 
         self.rudder.device = self.device
-        self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128, action_space=7,
-                              device=self.device,
-                              use_widi=self.use_widi_lstm, action_only=self.action_only,
-                              use_transformer=self.rudder.use_transformer, use_gru=self.use_gru,
-                              transfo_upgrade=self.rudder.transfo_upgrade).to(self.device)
+        obss_preprocessor = babyai.utils.ObssPreprocessor('newDataColl0.01', env.observation_space, 'newDataColl0.01')
+
+        self.rudder.net = ACModelRudder(obss_preprocessor.obs_space, env.action_space,use_memory=True)
         self.rudder.mu = 1
         self.rudder.quality_threshold = 0.8
         self.rudder.clip_value = 0.5

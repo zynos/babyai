@@ -251,7 +251,8 @@ class Rudder:
         return torch.stack(predictions).squeeze()
 
     def predict_full_episode(self, episode: ProcessData):
-        predictions, hidden, pred_plus_ten_ts = self.net(episode, None, True, self.use_transformer)
+        obs={"instr":episode.instructions,"image":episode.images,}
+        predictions, hidden, pred_plus_ten_ts = self.net(obs,torch.zeros(obs.instr.shape))
         return predictions, pred_plus_ten_ts
 
     def predict_every_timestep(self, episode: ProcessData):
