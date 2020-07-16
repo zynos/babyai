@@ -36,7 +36,7 @@ class ExpertControllerFiLM(nn.Module):
 
 class Net(nn.Module):
     def __init__(self, image_dim,  instr_dim, ac_embed_dim, action_space,device,use_widi,
-                 action_only,use_transformer=False,transfo_upgrade=False):
+                 action_only,use_transformer=False,use_gru=False,transfo_upgrade=False):
         super(Net, self).__init__()
         self.action_space = action_space
         self.use_transformer = use_transformer
@@ -48,6 +48,7 @@ class Net(nn.Module):
         self.word_embedding = nn.Embedding(100, self.instr_dim)
         self.compressed_embedding = 128
         self.use_widi_lstm = use_widi
+        self.use_gru = use_gru
         # self.combined_input_dim = action_space.n + self.compressed_embedding + instr_dim + image_dim
         # embed only
         self.action_only = action_only
@@ -121,21 +122,28 @@ class Net(nn.Module):
         self.lambda_replace = lambda_replace_func
 
         if self.use_widi_lstm:
+            # self.lstm = LSTMLayer(
+            #     in_features=self.combined_input_dim, out_features=self.rudder_lstm_out, inputformat='NLC',
+            #     # cell input: initialize weights to forward inputs with xavier, disable connections to recurrent inputs
+            #     w_ci=(torch.nn.init.xavier_normal_, False),
+            #     # input gate: disable connections to forward inputs, initialize weights to recurrent inputs with xavier
+            #     w_ig=(False, torch.nn.init.xavier_normal_),
+            #     # output gate: disable all connection (=no forget gate) and disable bias
+            #     w_og=False, b_og=False,
+            #     # forget gate: disable all connection (=no forget gate) and disable bias
+            #     w_fg=False, b_fg=False,
+            #     # LSTM output activation is set to identity function
+            #     a_out=self.lambda_replace
+            # )
             self.lstm = LSTMLayer(
-                in_features=self.combined_input_dim, out_features=self.rudder_lstm_out, inputformat='NLC',
-                # cell input: initialize weights to forward inputs with xavier, disable connections to recurrent inputs
-                w_ci=(torch.nn.init.xavier_normal_, False),
-                # input gate: disable connections to forward inputs, initialize weights to recurrent inputs with xavier
-                w_ig=(False, torch.nn.init.xavier_normal_),
-                # output gate: disable all connection (=no forget gate) and disable bias
-                w_og=False, b_og=False,
-                # forget gate: disable all connection (=no forget gate) and disable bias
-                w_fg=False, b_fg=False,
-                # LSTM output activation is set to identity function
-                a_out=self.lambda_replace
-            )
+                in_features=self.combined_input_dim, out_features=self.rudder_lstm_out, inputformat='NLC')
+
         else:
-            self.lstm = nn.LSTM(self.combined_input_dim, self.rudder_lstm_out, batch_first=True)
+            if self.use_gru:
+                self.lstm = nn.GRU(self.combined_input_dim, self.rudder_lstm_out, batch_first=True)
+            else:
+                self.lstm = nn.LSTM(self.combined_input_dim, self.rudder_lstm_out, batch_first=True)
+
 
     def extract_process_data(self, dic):
         try:

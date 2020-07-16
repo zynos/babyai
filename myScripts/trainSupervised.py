@@ -25,7 +25,7 @@ from pathlib import Path
 
 class Training:
 
-    def __init__(self,use_transformer=False):
+    def __init__(self, use_transformer=False):
 
         self.out_image_height = 10.8
         self.total_pics = 0
@@ -35,7 +35,8 @@ class Training:
         print("using ", self.device)
         self.image_dim = 128
         self.instr_dim = 128
-        self.use_widi_lstm = False
+        self.use_widi_lstm = True
+        self.use_gru = False
         self.action_only = False
         self.rudder.use_transformer = use_transformer
         self.rudder.transfo_upgrade = False
@@ -45,18 +46,20 @@ class Training:
         self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128, action_space=7,
                               device=self.device,
                               use_widi=self.use_widi_lstm, action_only=self.action_only,
-                              use_transformer=self.rudder.use_transformer,
+                              use_transformer=self.rudder.use_transformer, use_gru=self.use_gru,
                               transfo_upgrade=self.rudder.transfo_upgrade).to(self.device)
         self.rudder.mu = 1
         self.rudder.quality_threshold = 0.8
         self.rudder.clip_value = 0.5
-        self.lr = 1e-6
+        self.lr = 1e-5
         self.weight_dec = 1e-6
         self.rudder.optimizer = torch.optim.Adam(self.rudder.net.parameters(), lr=self.lr, weight_decay=self.weight_dec)
         self.epochs = 5
         self.model_type = "stdLSTm"
         if self.use_widi_lstm:
             self.model_type = "widiLSTM"
+        if self.use_gru:
+            self.model_type = "GRU"
         if self.rudder.use_transformer:
             self.model_type = "transformerEncoder"
         if self.rudder.transfo_upgrade:
@@ -88,8 +91,7 @@ class Training:
 
     def plot(self, returns, train_losses, test_losses):
         plt.title(
-            "aO " + str(self.action_only) + " TR " + str(self.rudder.use_transformer) + " widi " + str(
-                self.use_widi_lstm) + " aux loss " + str(
+            "aO " + str(self.action_only) + " " + self.model_type + " aux loss " + str(
                 self.rudder.aux_loss_multiplier) + " return mean {:.2f} lr {} w_dec {} epochs {}".format(
                 np.mean(returns), self.lr, self.weight_dec,
                 self.epochs))
@@ -226,6 +228,29 @@ class Training:
         return actions[i]
         # plt.show()
 
+    def load_correct_network_parameters(self,path,file_name):
+        self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128,
+                              action_space=7, device=self.device,
+                              use_widi=False, action_only=self.action_only).to(self.device)
+        if "widi" in file_name:
+            self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128,
+                                  action_space=7, device=self.device,
+                                  use_widi=True, action_only=self.action_only).to(self.device)
+
+        if "GRU" in file_name:
+            self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128,
+                                  action_space=7, device=self.device,
+                                  use_widi=False, use_gru=True,action_only=self.action_only).to(self.device)
+
+        if "trans" in file_name:
+            self.rudder.net.use_transformer = True
+            if "UP" in file_name:
+                self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128,
+                                      action_space=7, device=self.device,
+                                      use_widi=False, action_only=self.action_only, transfo_upgrade=True).to(
+                    self.device)
+        self.rudder.net.load_state_dict(torch.load(path + file_name))
+
     def get_predictions_from_different_models(self, model_path, short_episode):
         # path = "256Img/"
         path = model_path
@@ -233,22 +258,7 @@ class Training:
         ret = []
         for f in files:
             print(f)
-            self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128,
-                                  action_space=7, device=self.device,
-                                  use_widi=False, action_only=self.action_only).to(self.device)
-            if "widi" in f:
-                self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128,
-                                      action_space=7, device=self.device,
-                                      use_widi=True, action_only=self.action_only).to(self.device)
-
-            if "trans" in f:
-                self.rudder.net.use_transformer = True
-                if "UP" in f:
-                    self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128,
-                                          action_space=7, device=self.device,
-                                          use_widi=False, action_only=self.action_only, transfo_upgrade=True).to(
-                        self.device)
-            self.rudder.net.load_state_dict(torch.load(path + f))
+            self.load_correct_network_parameters(path,f)
             loss, returns, quality, predictions, (main_loss, aux_loss) = self.rudder.feed_network(short_episode)
             # tmp = torch.zeros_like(predictions)
             # diff = predictions[:, 1:] - predictions[:, :-1]
@@ -467,11 +477,11 @@ def get_return_mean(episodes):
     print("mean return", np.mean(rets))
 
 
-def do_multiple_evaluations(model_path,parent_folder):
+def do_multiple_evaluations(model_path, parent_folder):
     ranges = [(0, 12), (12, 20), (20, 40), (40, 60), (60, 128), (127, 129)]
     runs = 3
     for i in range(runs):
-        path = parent_folder+ "run" + str(i) + "/"
+        path = parent_folder + "run" + str(i) + "/"
         # Path(path).mkdir(parents=True, exist_ok=True)
         for r in ranges:
             training.evaluate(r[0], r[1], path, model_path)
@@ -561,13 +571,15 @@ def create_episode_len_histogram(path):
     plt.bar(c.keys(), c.values())
     plt.show()
 
+
 # create_episode_len_histogram("../scripts/demos/train/")
 # env = gym.make("BabyAI-PutNextLocal-v0")
 # sys.settrace
 training = Training()
-# training.visualize_failed_episode_in_parts(127,129,"failedVisualized1Million0.5Aux1e-5LRNoAuxTime/","1Million0.5Aux1e-5LRNoAuxTime/",)
+# training.visualize_failed_episode_in_parts(127, 129, "failedVisualized1Million0.5Aux1e-6LRNoAuxTime/",
+#                                            "1Million0.5Aux1e-6LRNoAuxTime/", )
 # training.calc_rew_of_generated_episodes("../scripts/demos/train/")
-# do_multiple_evaluations("1Million0.5Aux1e-5LRNoAuxTime/","EVAL_1Million0.5Aux1e-5LRNoAuxTime/")
+# do_multiple_evaluations("models/1Million0.5Aux1e-5LRNoAuxTime/","EVAL_GRU_1Million0.5Aux1e-5LRNoAuxTime/")
 training.train_file_based("../scripts/demos/")
 # training.train_file_based("testi/",False)
 # find_unique_episodes("../scripts/replays7/")
