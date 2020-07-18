@@ -253,19 +253,45 @@ class ACModelRudder(nn.Module, babyai.rl.RecurrentACModel):
         else:
             extra_predictions = dict()
 
-        x = self.actor(embedding)
-        logits=F.log_softmax(x, dim=1)
-        dist = Categorical(logits=logits)
-
+        # x = self.actor(embedding)
+        # logits=F.log_softmax(x, dim=1)
+        # dist = Categorical(logits=logits)
+        #
         x = self.critic(embedding)
         value = x.squeeze(1)
+        #
+        # #RUDDER
+        # x = self.rudder_critic(embedding)
+        # rudder_value = x.squeeze(1)
 
-        #RUDDER
-        x = self.rudder_critic(embedding)
-        rudder_value = x.squeeze(1)
+        # return {'dist': dist, 'value': value, 'memory': memory, 'extra_predictions': extra_predictions,
+        #         "embedding":embedding, "rudder_value":rudder_value,"logits":logits}
 
-        return {'dist': dist, 'value': value, 'memory': memory, 'extra_predictions': extra_predictions,
-                "embedding":embedding, "rudder_value":rudder_value,"logits":logits}
+        return {'memory': memory, 'value': value}
+
+    def paper_loss3(self, predictions, returns, pred_plus_ten_ts):
+
+        diff = predictions[:, -1] - returns
+        # Main task: predicting return at last timestep
+        quality = self.calc_quality(diff)
+        main_loss = diff ** 2
+        # Auxiliary task: predicting final return at every timestep ([..., None] is for correct broadcasting)
+        continuous_loss = torch.mean((predictions[:, :] - returns[..., None]) ** 2)
+        # continuous_loss = self.mse_loss(predictions[:, :], returns[..., None])
+
+        # loss Le of the prediction of the output at t+10 at each time step t
+        # le10_loss = 0.0
+        # # if episode is smaller than 10 the follwoing would produce a NAN
+        # if predictions.shape[1] > 10:
+        #     pred_chunk = predictions[:, 10:]
+        #     le10_loss = torch.mean((pred_chunk - pred_plus_ten_ts[:, :-10]) ** 2)
+
+        # le10_loss = self.mse_loss(pred_chunk, pred_plus_ten_ts[:, :-10])
+
+        # Combine losses
+        aux_loss = continuous_loss# + le10_loss
+        loss = main_loss + self.aux_loss_multiplier * aux_loss
+        return loss, quality, (main_loss.detach().clone().item(), aux_loss.detach().clone().item())
 
     def _get_instr_embedding(self, instr):
         if self.lang_model == 'gru':
