@@ -29,7 +29,7 @@ class Revolution:
         self.lr = 1e-4
         self.max_grad_norm = 0.5
         self.optimizer = torch.optim.Adam(self.acmodel.parameters(),self.lr )
-        self.batch_size = 32
+        self.batch_size = 8
         self.max_sequence_length = 128
         shape = (self.batch_size, self.max_sequence_length)
 
@@ -193,7 +193,12 @@ class Revolution:
         padded_dones = self.pad_dones(dones, zeros_upfront=True)
         rewards = [e.rewards for e in batch]
         rewards = self.pad_rewards(rewards, zeros_upfront=True)
+        actions = [e.actions+1 for e in batch]
 
+        for a in actions:
+            assert 0 not in a
+
+        actions = self.my_reverse_pad_sequence(actions,batch_first=True)
         instructions = self.my_reverse_pad_sequence(instructions, batch_first=True)
         images = self.my_reverse_pad_sequence(images, batch_first=True)
         dones = padded_dones
@@ -214,6 +219,7 @@ class Revolution:
             obs.image = images[:, i]  # *mask.unsqueeze(1).unsqueeze(1).unsqueeze(1)
             obs.instr = instructions[:, i]  # *mask.unsqueeze(1)
             obs.done = dones[:, i]
+            obs.action = actions[:,i]
             obss.append(obs)
         return obss,rewards
 
@@ -222,10 +228,11 @@ class Revolution:
         aux_losses = []
         for i in range(30):
             for l in range(10):
-                obss,rewards=self.prepare_batch(l)
+                obss,rewards=self.prepare_batch(0)
                 predictions=torch.stack(self.train_one_batch(obss),dim=0).to(self.device)
                 returns=rewards.sum(dim=1).to(self.device)
                 batch_loss,_,(main_l,aux_l) =self.paper_loss3(predictions,returns,None )
+                print("pred",predictions[-1].mean())
 
                 l=self.update_parameters(batch_loss)
                 main_losses.append(main_l)

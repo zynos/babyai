@@ -47,7 +47,7 @@ class Training:
         self.rudder.device = self.device
         obss_preprocessor = babyai.utils.ObssPreprocessor('newDataColl0.01', env.observation_space, 'newDataColl0.01')
 
-        self.rudder.net = ACModelRudder(obss_preprocessor.obs_space, env.action_space,use_memory=True)
+        self.rudder.net = ACModelRudder(obss_preprocessor.obs_space, env.action_space,device=self.device,use_memory=True)
         self.rudder.mu = 1
         self.rudder.quality_threshold = 0.8
         self.rudder.clip_value = 0.5

@@ -43,12 +43,13 @@ class ExpertControllerFiLM(nn.Module):
 
 class ACModelRudder(nn.Module, babyai.rl.RecurrentACModel):
     def __init__(self, obs_space, action_space,
-                 image_dim=128, memory_dim=128, instr_dim=128,
+                 image_dim=128, memory_dim=128, instr_dim=128,device="cuda",
                  use_instr=False, lang_model="gru", use_memory=False, arch="cnn1",
                  aux_info=None):
         super().__init__()
 
         # Decide which components are enabled
+        self.device = device
         self.use_instr = use_instr
         self.use_memory = use_memory
         self.arch = arch
@@ -57,7 +58,7 @@ class ACModelRudder(nn.Module, babyai.rl.RecurrentACModel):
         self.image_dim = image_dim
         self.memory_dim = memory_dim
         self.instr_dim = instr_dim
-        self.action_space=action_space
+        self.action_space=action_space.n+1
 
         self.obs_space = obs_space
 
@@ -113,7 +114,7 @@ class ACModelRudder(nn.Module, babyai.rl.RecurrentACModel):
 
         # Define memory
         if self.use_memory:
-            self.memory_rnn = nn.LSTMCell(self.image_dim, self.memory_dim)
+            self.memory_rnn = nn.LSTMCell(self.image_dim+self.action_space, self.memory_dim)
 
         # Resize image embedding
         self.embedding_size = self.semi_memory_size
@@ -147,9 +148,9 @@ class ACModelRudder(nn.Module, babyai.rl.RecurrentACModel):
 
         # Define critic's model
         self.critic = nn.Sequential(
-            nn.Linear(self.embedding_size, 64),
+            nn.Linear(self.embedding_size, 64,bias=True),
             nn.Tanh(),
-            nn.Linear(64, 1)
+            nn.Linear(64, 1,bias=True)
         )
 
         # Define critic's model
@@ -236,6 +237,9 @@ class ACModelRudder(nn.Module, babyai.rl.RecurrentACModel):
             x = self.image_conv(x)
 
         x = x.reshape(x.shape[0], -1)
+        one_hot_actions = torch.nn.functional.one_hot(obs.action, num_classes=self.action_space).float().to(self.device)
+        x = torch.cat([x,one_hot_actions],dim=-1)
+
 
         if self.use_memory:
             hidden = (memory[:, :self.semi_memory_size], memory[:, self.semi_memory_size:])
@@ -257,6 +261,8 @@ class ACModelRudder(nn.Module, babyai.rl.RecurrentACModel):
         # logits=F.log_softmax(x, dim=1)
         # dist = Categorical(logits=logits)
         #
+
+
         x = self.critic(embedding)
         value = x.squeeze(1)
         #
