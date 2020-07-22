@@ -42,7 +42,7 @@ class ExpertControllerFiLM(nn.Module):
 
 
 class ACModelRudder(nn.Module, babyai.rl.RecurrentACModel):
-    def __init__(self, obs_space, action_space,
+    def __init__(self, obs_space, action_space, use_actions=True,
                  image_dim=128, memory_dim=128, instr_dim=128,device="cuda",
                  use_instr=False, lang_model="gru", use_memory=False, arch="cnn1",
                  aux_info=None):
@@ -59,7 +59,7 @@ class ACModelRudder(nn.Module, babyai.rl.RecurrentACModel):
         self.memory_dim = memory_dim
         self.instr_dim = instr_dim
         self.action_space=action_space.n+1
-
+        self.use_actions = use_actions
         self.obs_space = obs_space
 
         if arch == "cnn1":
@@ -114,7 +114,10 @@ class ACModelRudder(nn.Module, babyai.rl.RecurrentACModel):
 
         # Define memory
         if self.use_memory:
-            self.memory_rnn = nn.LSTMCell(self.image_dim+self.action_space, self.memory_dim)
+            if self.use_actions:
+                self.memory_rnn = nn.LSTMCell(self.image_dim+self.action_space, self.memory_dim)
+            else:
+                self.memory_rnn = nn.LSTMCell(self.image_dim, self.memory_dim)
 
         # Resize image embedding
         self.embedding_size = self.semi_memory_size
@@ -237,8 +240,9 @@ class ACModelRudder(nn.Module, babyai.rl.RecurrentACModel):
             x = self.image_conv(x)
 
         x = x.reshape(x.shape[0], -1)
-        one_hot_actions = torch.nn.functional.one_hot(obs.action, num_classes=self.action_space).float().to(self.device)
-        x = torch.cat([x,one_hot_actions],dim=-1)
+        if self.use_actions:
+            one_hot_actions = torch.nn.functional.one_hot(obs.action, num_classes=self.action_space).float().to(self.device)
+            x = torch.cat([x,one_hot_actions],dim=-1)
 
 
         if self.use_memory:

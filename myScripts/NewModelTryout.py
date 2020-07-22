@@ -24,12 +24,14 @@ class Revolution:
                                                              'newDataColl0.01')
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.memory_dim = 128
-        self.acmodel = ACModelRudder(self.preprocess_obss.obs_space, env.action_space, memory_dim=self.memory_dim,
+        self.train_same_batch = False
+        self.batch_size = 64
+        self.use_actions = False
+        self.acmodel = ACModelRudder(self.preprocess_obss.obs_space, env.action_space,self.use_actions, memory_dim=self.memory_dim,
                                      use_memory=True).to(self.device)
         self.lr = 1e-4
         self.max_grad_norm = 0.5
         self.optimizer = torch.optim.Adam(self.acmodel.parameters(),self.lr )
-        self.batch_size = 8
         self.max_sequence_length = 128
         shape = (self.batch_size, self.max_sequence_length)
 
@@ -223,12 +225,15 @@ class Revolution:
             obss.append(obs)
         return obss,rewards
 
-    def start(self):
+    def start(self,run):
         main_losses=[]
         aux_losses = []
         for i in range(30):
             for l in range(10):
-                obss,rewards=self.prepare_batch(0)
+                if self.train_same_batch:
+                    obss,rewards=self.prepare_batch(0)
+                else:
+                    obss, rewards = self.prepare_batch(l)
                 predictions=torch.stack(self.train_one_batch(obss),dim=0).to(self.device)
                 returns=rewards.sum(dim=1).to(self.device)
                 batch_loss,_,(main_l,aux_l) =self.paper_loss3(predictions,returns,None )
@@ -239,13 +244,23 @@ class Revolution:
                 aux_losses.append(aux_l)
 
         import matplotlib.pyplot as plt
+        plt.title("bs "+str(self.batch_size)+
+                  " lr "+str(self.lr)+" incl actions "
+                  +str(self.use_actions)+" same batch "
+                  +str(self.train_same_batch))
         plt.yscale('log')
         plt.plot(main_losses, label="main")
         plt.plot(aux_losses, label="aux")
         plt.legend(loc="upper left")
+        figure = plt.gcf()  # get current figure
+        figure.set_size_inches(19.2, 10.8)
+        path="/home/nick/Documents/jku/Ma/noActionsMultipleBatch/"
+        plt.savefig(path+"action"+str(run), dpi=100)
+        plt.close()
 
-        plt.show()
+        # plt.show()
 
 
-r = Revolution()
-r.start()
+for i in range(3):
+    r = Revolution()
+    r.start(i)
