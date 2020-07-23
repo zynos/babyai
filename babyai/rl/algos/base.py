@@ -31,7 +31,7 @@ class BaseAlgo(ABC):
             the number of frames collected by every process for an update
         discount : float
             the discount for future rewards
-        lr : float
+        lr : floatself.memory_rnn(x, hidden)
             the learning rate for optimizers
         gae_lambda : float
             the lambda coefficient in the GAE formula
@@ -92,8 +92,8 @@ class BaseAlgo(ABC):
         # self.memory = torch.zeros(shape[1], self.acmodel.memory_size, device=self.device,dtype=torch.float16)
         # self.memories = torch.zeros(*shape, self.acmodel.memory_size, device=self.device,dtype=torch.float16)
 
-        self.memory = torch.zeros(shape[1], self.acmodel.memory_size, device=self.device)
-        self.memories = torch.zeros(*shape, self.acmodel.memory_size, device=self.device)
+        self.memory = torch.zeros(1,shape[1] ,self.acmodel.memory_size, device=self.device)
+        self.memories = torch.zeros(self.num_frames_per_proc,1,self.num_procs, self.acmodel.memory_size, device=self.device)
 
         self.mask = torch.ones(shape[1], device=self.device)
         self.masks = torch.zeros(*shape, device=self.device)

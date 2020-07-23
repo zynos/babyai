@@ -113,7 +113,9 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
 
         # Define memory
         if self.use_memory:
-            self.memory_rnn = nn.LSTMCell(self.image_dim, self.memory_dim)
+            # self.memory_rnn = nn.LSTMCell(self.image_dim, self.memory_dim)
+            self.memory_rnn = nn.LSTM(self.image_dim, self.memory_dim,batch_first=True)
+
 
         # Resize image embedding
         self.embedding_size = self.semi_memory_size
@@ -238,10 +240,20 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
         x = x.reshape(x.shape[0], -1)
 
         if self.use_memory:
-            hidden = (memory[:, :self.semi_memory_size], memory[:, self.semi_memory_size:])
+            # hidden = (memory[:, :self.semi_memory_size], memory[:, self.semi_memory_size:])
+            hidden = (memory[:,:, :self.semi_memory_size].contiguous(), memory[:,:, self.semi_memory_size:].contiguous())
+
+            # hidden = self.memory_rnn(x, hidden)
+            # embedding = hidden[0].contiguous()
+            # memory = torch.cat(hidden, dim=1)
+            x=x.unsqueeze(1)
+            # if hidden[0].ndim == 2:
+            # hidden=(hidden[1][0].unsqueeze(1),hidden[1][1].unsqueeze(1))
             hidden = self.memory_rnn(x, hidden)
-            embedding = hidden[0]
-            memory = torch.cat(hidden, dim=1)
+            embedding = hidden[0].squeeze(1)
+            # memory = torch.cat([hidden[1][0].squeeze(1),hidden[1][1].squeeze(1)],dim=1)
+            memory = torch.cat([hidden[1][0],hidden[1][1]],dim=-1)
+
         else:
             embedding = x
 
