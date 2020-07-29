@@ -9,7 +9,7 @@ import torch
 from babyai.evaluate import batch_evaluate
 import babyai.utils as utils
 from babyai.rl import DictList
-from babyai.model import ACModel
+from myScripts.MyACModel import ACModel
 import multiprocessing
 import os
 import json
@@ -135,6 +135,7 @@ class ImitationLearning(object):
         self.obss_preprocessor = utils.ObssPreprocessor(args.model, observation_space,
                                                         getattr(self.args, 'pretrained_model', None))
 
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         # Define actor-critic model
         self.acmodel = utils.load_model(args.model, raise_not_found=False)
         if self.acmodel is None:
@@ -142,8 +143,8 @@ class ImitationLearning(object):
                 self.acmodel = utils.load_model(args.pretrained_model, raise_not_found=True)
             else:
                 logger.info('Creating new model')
-                self.acmodel = ACModel(self.obss_preprocessor.obs_space, action_space,
-                                       args.image_dim, args.memory_dim, args.instr_dim,
+                self.acmodel = ACModel(self.obss_preprocessor.obs_space, action_space,False,
+                                       args.image_dim, args.memory_dim, args.instr_dim,self.device,
                                        not self.args.no_instr, self.args.instr_arch,
                                        not self.args.no_mem, self.args.arch)
         self.obss_preprocessor.vocab.save()
@@ -156,7 +157,6 @@ class ImitationLearning(object):
         self.optimizer = torch.optim.Adam(self.acmodel.parameters(), self.args.lr, eps=self.args.optim_eps)
         self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=100, gamma=0.9)
 
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     @staticmethod
     def default_model_name(args):
@@ -312,6 +312,8 @@ class ImitationLearning(object):
             self.optimizer.zero_grad()
             final_loss.backward()
             self.optimizer.step()
+        # Learning rate scheduler
+        self.scheduler.step()
 
         log = {}
         log["entropy"] = float(final_entropy / self.args.recurrence)
@@ -390,8 +392,7 @@ class ImitationLearning(object):
 
             update_start_time = time.time()
 
-            # Learning rate scheduler
-            self.scheduler.step()
+
 
             indices = index_sampler.get_epoch_indices(status['i'])
             log = self.run_epoch_recurrence(train_demos, is_training=True, indices=indices)
