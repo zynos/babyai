@@ -9,7 +9,7 @@ import torch
 from babyai.evaluate import batch_evaluate
 import babyai.utils as utils
 from babyai.rl import DictList
-from myScripts.MyACModel import ACModel
+from babyai.model import ACModel
 import multiprocessing
 import os
 import json
@@ -34,6 +34,7 @@ class EpochIndexSampler:
     This allows you to keep the small advantage that sampling without replacement
     provides, but also enjoy smaller epochs.
     """
+
     def __init__(self, n_examples, epoch_n_examples):
         self.n_examples = n_examples
         self.epoch_n_examples = epoch_n_examples
@@ -143,10 +144,14 @@ class ImitationLearning(object):
                 self.acmodel = utils.load_model(args.pretrained_model, raise_not_found=True)
             else:
                 logger.info('Creating new model')
-                self.acmodel = ACModel(self.obss_preprocessor.obs_space, action_space,False,
-                                       args.image_dim, args.memory_dim, args.instr_dim,self.device,
+                self.acmodel = ACModel(self.obss_preprocessor.obs_space, action_space,
+                                       args.image_dim, args.memory_dim, args.instr_dim,
                                        not self.args.no_instr, self.args.instr_arch,
                                        not self.args.no_mem, self.args.arch)
+                # self.acmodel = ACModel(self.obss_preprocessor.obs_space, action_space, False,
+                #                        args.image_dim, args.memory_dim, args.instr_dim, self.device,
+                #                        not self.args.no_instr, self.args.instr_arch,
+                #                        not self.args.no_mem, self.args.arch)
         self.obss_preprocessor.vocab.save()
         utils.save_model(self.acmodel, args.model)
 
@@ -156,7 +161,6 @@ class ImitationLearning(object):
 
         self.optimizer = torch.optim.Adam(self.acmodel.parameters(), self.args.lr, eps=self.args.optim_eps)
         self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=100, gamma=0.9)
-
 
     @staticmethod
     def default_model_name(args):
@@ -222,12 +226,33 @@ class ImitationLearning(object):
 
         return log
 
+    def calculate_reward(self, step_count, max_steps):
+        if step_count == max_steps:
+            return 0.0
+        return 1 - 0.9 * (step_count / max_steps)
+
+    def my_stuff(self):
+        lens = [len(episode) for episode in batch]
+        # only 0 required because its sorted
+        max_steps = 128
+        assert lens[0] <= max_steps
+        rewards = [self.calculate_reward(l, max_steps) for l in lens]
+        empty_rewards = [torch.zeros(l, device=self.device) for l in lens]
+        for i,reward in enumerate(rewards):
+            empty_rewards[i][-1]=reward
+        repeated_rewards=[]
+        for i,len_ in enumerate(lens):
+            repeated_rewards.append(torch.tensor(rewards[i]).expand(len_))
+
+
     def run_epoch_recurrence_one_batch(self, batch, is_training=False):
         batch = utils.demos.transform_demos(batch)
         batch.sort(key=len, reverse=True)
         # Constructing flat batch and indices pointing to start of each demonstration
         flat_batch = []
         inds = [0]
+
+
 
         for demo in batch:
             flat_batch += demo
@@ -244,6 +269,7 @@ class ImitationLearning(object):
         # Observations, true action, values and done for each of the stored demostration
         obss, action_true, done = flat_batch[:, 0], flat_batch[:, 1], flat_batch[:, 2]
         action_true = torch.tensor([action for action in action_true], device=self.device, dtype=torch.long)
+        reward_true = torch.tensor([reward for reward in reward_true], device=self.device)
 
         # Memory to be stored
         memories = torch.zeros([len(flat_batch), self.acmodel.memory_size], device=self.device)
@@ -288,6 +314,7 @@ class ImitationLearning(object):
         for _ in range(self.args.recurrence):
             obs = obss[indexes]
             preprocessed_obs = self.obss_preprocessor(obs, device=self.device)
+            reward_step = reward_true[indexes]
             action_step = action_true[indexes]
             mask_step = mask[indexes]
             model_results = self.acmodel(
@@ -308,12 +335,12 @@ class ImitationLearning(object):
 
         final_loss /= self.args.recurrence
 
+        self.scheduler.step()
         if is_training:
             self.optimizer.zero_grad()
             final_loss.backward()
             self.optimizer.step()
         # Learning rate scheduler
-        self.scheduler.step()
 
         log = {}
         log["entropy"] = float(final_entropy / self.args.recurrence)
@@ -337,7 +364,7 @@ class ImitationLearning(object):
         logs = []
 
         for env_name in ([self.args.env] if not getattr(self.args, 'multi_env', None)
-                         else self.args.multi_env):
+        else self.args.multi_env):
             logs += [batch_evaluate(agent, env_name, self.val_seed, episodes)]
             self.val_seed += episodes
         agent.model.train()
@@ -391,8 +418,6 @@ class ImitationLearning(object):
                 break
 
             update_start_time = time.time()
-
-
 
             indices = index_sampler.get_epoch_indices(status['i'])
             log = self.run_epoch_recurrence(train_demos, is_training=True, indices=indices)

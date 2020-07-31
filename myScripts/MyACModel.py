@@ -58,7 +58,7 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
         self.image_dim = image_dim
         self.memory_dim = memory_dim
         self.instr_dim = instr_dim
-        self.action_space=action_space.n+1
+        self.action_space=action_space.n#+1
         self.use_actions = use_actions
         self.obs_space = obs_space
 

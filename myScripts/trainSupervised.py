@@ -371,6 +371,9 @@ class Training:
         short_episode = self.get_random_episode_from_range(start, stop)
         self.evaluate_one_episode(start, stop, path_start, model_path, short_episode, env)
 
+    def calculate_reward(self,step_count , max_steps):
+        return 1 - 0.9 * (step_count / max_steps)
+
     def load_generated_demos(self, path, max_steps=128):
         with open(path, "rb") as f:
             vocab = {"put": 1, "the": 2, "grey": 3, "key": 4, "next": 5, "to": 6, "red": 7,
@@ -383,7 +386,7 @@ class Training:
             p = ProcessData()
             p.mission = demo[0][0]["mission"].lower()
             step_count = len(demo)
-            reward = 1 - 0.9 * (step_count / max_steps)
+            reward = self.calculate_reward(step_count , max_steps)
             assert 0 <= reward < 1
             if step_count == max_steps:
                 reward = 0
