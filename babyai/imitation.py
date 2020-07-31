@@ -231,7 +231,7 @@ class ImitationLearning(object):
             return 0.0
         return 1 - 0.9 * (step_count / max_steps)
 
-    def my_stuff(self):
+    def my_stuff(self,batch):
         lens = [len(episode) for episode in batch]
         # only 0 required because its sorted
         max_steps = 128
@@ -244,6 +244,8 @@ class ImitationLearning(object):
         for i,len_ in enumerate(lens):
             repeated_rewards.append(torch.tensor(rewards[i]).expand(len_))
 
+        return empty_rewards,repeated_rewards
+
 
     def run_epoch_recurrence_one_batch(self, batch, is_training=False):
         batch = utils.demos.transform_demos(batch)
@@ -251,6 +253,7 @@ class ImitationLearning(object):
         # Constructing flat batch and indices pointing to start of each demonstration
         flat_batch = []
         inds = [0]
+        empty_rewards,repeated_rewards = self.my_stuff(batch)
 
 
 
@@ -269,7 +272,7 @@ class ImitationLearning(object):
         # Observations, true action, values and done for each of the stored demostration
         obss, action_true, done = flat_batch[:, 0], flat_batch[:, 1], flat_batch[:, 2]
         action_true = torch.tensor([action for action in action_true], device=self.device, dtype=torch.long)
-        reward_true = torch.tensor([reward for reward in reward_true], device=self.device)
+        reward_true = torch.cat(empty_rewards)
 
         # Memory to be stored
         memories = torch.zeros([len(flat_batch), self.acmodel.memory_size], device=self.device)
@@ -316,18 +319,23 @@ class ImitationLearning(object):
             preprocessed_obs = self.obss_preprocessor(obs, device=self.device)
             reward_step = reward_true[indexes]
             action_step = action_true[indexes]
+            my_done_step = torch.from_numpy(done[indexes].astype(bool)).float().to(self.device)
             mask_step = mask[indexes]
             model_results = self.acmodel(
                 preprocessed_obs, memory * mask_step,
                 instr_embedding[episode_ids[indexes]])
+            predicted_reward = model_results['value']
+
             dist = model_results['dist']
             memory = model_results['memory']
 
             entropy = dist.entropy().mean()
-            policy_loss = -dist.log_prob(action_step).mean()
+            policy_loss = (((predicted_reward - reward_step)*my_done_step)**2).mean()
+            # policy_loss = -dist.log_prob(action_step).mean()
             loss = policy_loss - self.args.entropy_coef * entropy
-            action_pred = dist.probs.max(1, keepdim=True)[1]
-            accuracy += float((action_pred == action_step.unsqueeze(1)).sum()) / total_frames
+            # action_pred = dist.probs.max(1, keepdim=True)[1]
+            # accuracy += float((action_pred == action_step.unsqueeze(1)).sum()) / total_frames
+            accuracy = 0.0
             final_loss += loss
             final_entropy += entropy
             final_policy_loss += policy_loss
