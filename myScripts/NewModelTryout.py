@@ -8,7 +8,7 @@ import gym
 import numpy as np
 import torch
 from babyai.utils.demos import transform_demos
-from myScripts.MyACModel import ACModelRudder
+from myScripts.MyACModel import ACModel
 from myScripts.ReplayBuffer import ProcessData
 from torch.nn.utils.rnn import pad_sequence
 
@@ -27,7 +27,7 @@ class Revolution:
         self.preprocess_obss = babyai.utils.ObssPreprocessor('newDataColl0.01', env.observation_space,
                                                              'newDataColl0.01')
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.memory_dim = 128
+        self.memory_dim = 1024
         self.train_same_batch = True
         self.batch_size = 1
         self.use_actions = False
@@ -35,7 +35,7 @@ class Revolution:
         # self.batches_per_epoch = int(10000/self.batch_size)
         self.batches_per_epoch = 30
 
-        self.acmodel = ACModelRudder(self.preprocess_obss.obs_space, env.action_space, self.use_actions,
+        self.acmodel = ACModel(self.preprocess_obss.obs_space, env.action_space, self.use_actions,
                                      memory_dim=self.memory_dim,
                                      use_memory=True).to(self.device)
         self.lr = 1e-2
