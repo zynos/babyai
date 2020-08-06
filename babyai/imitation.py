@@ -75,6 +75,8 @@ class EpochIndexSampler:
 
 class ImitationLearning(object):
     def __init__(self, args, ):
+        self.use_rudder = True
+        self.aux_loss_multiplier = 0.1
         self.args = args
 
         utils.seed(self.args.seed)
@@ -231,21 +233,26 @@ class ImitationLearning(object):
             return 0.0
         return 1 - 0.9 * (step_count / max_steps)
 
-    def my_stuff(self,batch):
+    def my_stuff(self, batch):
         lens = [len(episode) for episode in batch]
         # only 0 required because its sorted
         max_steps = 128
         assert lens[0] <= max_steps
         rewards = [self.calculate_reward(l, max_steps) for l in lens]
         empty_rewards = [torch.zeros(l, device=self.device) for l in lens]
-        for i,reward in enumerate(rewards):
-            empty_rewards[i][-1]=reward
-        repeated_rewards=[]
-        for i,len_ in enumerate(lens):
-            repeated_rewards.append(torch.tensor(rewards[i]).expand(len_))
+        for i, reward in enumerate(rewards):
+            empty_rewards[i][-1] = reward
+        repeated_rewards = []
+        for i, len_ in enumerate(lens):
+            repeated_rewards.append(torch.tensor(rewards[i],device=self.device).expand(len_))
 
-        return empty_rewards,repeated_rewards
+        return empty_rewards, repeated_rewards
 
+    def calculate_my_loss(self, predicted_reward, reward_empty_step, my_done_step, reward_repeated_step):
+        main_loss = (((predicted_reward - reward_empty_step) * my_done_step) ** 2).mean()
+        aux_loss = ((predicted_reward - reward_repeated_step) ** 2).mean()
+        final_loss = main_loss + self.aux_loss_multiplier * aux_loss
+        return final_loss, (main_loss, aux_loss)
 
     def run_epoch_recurrence_one_batch(self, batch, is_training=False):
         batch = utils.demos.transform_demos(batch)
@@ -253,9 +260,8 @@ class ImitationLearning(object):
         # Constructing flat batch and indices pointing to start of each demonstration
         flat_batch = []
         inds = [0]
-        empty_rewards,repeated_rewards = self.my_stuff(batch)
-
-
+        if self.use_rudder:
+            empty_rewards, repeated_rewards = self.my_stuff(batch)
 
         for demo in batch:
             flat_batch += demo
@@ -272,7 +278,9 @@ class ImitationLearning(object):
         # Observations, true action, values and done for each of the stored demostration
         obss, action_true, done = flat_batch[:, 0], flat_batch[:, 1], flat_batch[:, 2]
         action_true = torch.tensor([action for action in action_true], device=self.device, dtype=torch.long)
-        reward_true = torch.cat(empty_rewards)
+        if self.use_rudder:
+            reward_empty_true = torch.cat(empty_rewards)
+            reward_repeated_true = torch.cat(repeated_rewards)
 
         # Memory to be stored
         memories = torch.zeros([len(flat_batch), self.acmodel.memory_size], device=self.device)
@@ -283,6 +291,7 @@ class ImitationLearning(object):
         instr_embedding = self.acmodel._get_instr_embedding(preprocessed_first_obs.instr)
 
         # Loop terminates when every observation in the flat_batch has been handled
+        my_rews=[]
         while True:
             # taking observations and done located at inds
             obs = obss[inds]
@@ -290,9 +299,12 @@ class ImitationLearning(object):
             preprocessed_obs = self.obss_preprocessor(obs, device=self.device)
             with torch.no_grad():
                 # taking the memory till len(inds), as demos beyond that have already finished
-                new_memory = self.acmodel(
+                model_res = self.acmodel(
                     preprocessed_obs,
-                    memory[:len(inds), :], instr_embedding[:len(inds)])['memory']
+                    memory[:len(inds), :], instr_embedding[:len(inds)])
+                new_memory=model_res['memory']
+                pred_rew = model_res["value"]
+                my_rews.append((pred_rew,reward_empty_true[inds],reward_repeated_true[inds]))
 
             memories[inds, :] = memory[:len(inds), :]
             memory[:len(inds), :] = new_memory
@@ -314,28 +326,41 @@ class ImitationLearning(object):
         memory = memories[indexes]
         accuracy = 0
         total_frames = len(indexes) * self.args.recurrence
+        rewards=[]
         for _ in range(self.args.recurrence):
             obs = obss[indexes]
             preprocessed_obs = self.obss_preprocessor(obs, device=self.device)
-            reward_step = reward_true[indexes]
+            if self.use_rudder:
+                reward_empty_step = reward_empty_true[indexes]
+                reward_repeated_step = reward_repeated_true[indexes]
+                my_done_step = torch.from_numpy(done[indexes].astype(bool)).float().to(self.device)
+
             action_step = action_true[indexes]
-            my_done_step = torch.from_numpy(done[indexes].astype(bool)).float().to(self.device)
             mask_step = mask[indexes]
             model_results = self.acmodel(
                 preprocessed_obs, memory * mask_step,
                 instr_embedding[episode_ids[indexes]])
-            predicted_reward = model_results['value']
+            if self.use_rudder:
+                predicted_reward = model_results['value']
+                rewards.append((predicted_reward,reward_empty_step,reward_repeated_step,my_done_step))
 
             dist = model_results['dist']
             memory = model_results['memory']
 
             entropy = dist.entropy().mean()
-            policy_loss = (((predicted_reward - reward_step)*my_done_step)**2).mean()
-            # policy_loss = -dist.log_prob(action_step).mean()
-            loss = policy_loss - self.args.entropy_coef * entropy
-            # action_pred = dist.probs.max(1, keepdim=True)[1]
-            # accuracy += float((action_pred == action_step.unsqueeze(1)).sum()) / total_frames
-            accuracy = 0.0
+            if self.use_rudder:
+                main_loss, _ = self.calculate_my_loss(predicted_reward, reward_empty_step, my_done_step,
+                                                      reward_repeated_step)
+                policy_loss = main_loss
+                loss= main_loss
+            else:
+                policy_loss = -dist.log_prob(action_step).mean()
+                loss = policy_loss - self.args.entropy_coef * entropy
+            if self.use_rudder:
+                accuracy = 0.0
+            else:
+                action_pred = dist.probs.max(1, keepdim=True)[1]
+                accuracy += float((action_pred == action_step.unsqueeze(1)).sum()) / total_frames
             final_loss += loss
             final_entropy += entropy
             final_policy_loss += policy_loss
@@ -349,7 +374,7 @@ class ImitationLearning(object):
             final_loss.backward()
             self.optimizer.step()
         # Learning rate scheduler
-
+        print(final_loss.item())
         log = {}
         log["entropy"] = float(final_entropy / self.args.recurrence)
         log["policy_loss"] = float(final_policy_loss / self.args.recurrence)
