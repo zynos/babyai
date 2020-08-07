@@ -392,8 +392,8 @@ class ImitationLearning(object):
         log["entropy"] = float(final_entropy / self.args.recurrence)
         log["policy_loss"] = float(final_policy_loss / self.args.recurrence)
         log["accuracy"] = float(accuracy)
-        log["aux_loss"] = float(aux_loss)
-        log["main_loss"] = float(main_loss)
+        log["aux_loss"] = float(final_aux_loss)
+        log["main_loss"] = float(final_main_loss)
 
         return log
 
