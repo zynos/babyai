@@ -259,6 +259,19 @@ class ImitationLearning(object):
         final_loss = main_loss + self.aux_loss_multiplier * aux_loss
         return final_loss, (main_loss, aux_loss)
 
+    def filter_finished_episodes(self,list_of_tuples):
+        out=[]
+        for i,tup in enumerate(list_of_tuples):
+            dones = tup[3]
+            if dones.any():
+                to_finish=np.argwhere(dones==True)
+                for index in to_finish:
+                    predictions = [e[0][index] for e in list_of_tuples[:i+1]]
+                    orig_rewards=[e[1][index] for e in list_of_tuples[:i+1]]
+                    dones = [e[3][index] for e in list_of_tuples[:i+1]]
+                    actions=[e[4][index] for e in list_of_tuples[:i+1]]
+                    out.append((predictions,orig_rewards,dones,actions))
+
     def run_epoch_recurrence_one_batch(self, batch, is_training=False):
         batch = utils.demos.transform_demos(batch)
         batch.sort(key=len, reverse=True)
@@ -309,7 +322,7 @@ class ImitationLearning(object):
                     memory[:len(inds), :], instr_embedding[:len(inds)])
                 new_memory = model_res['memory']
                 pred_rew = model_res["value"]
-                my_rews.append((pred_rew, reward_empty_true[inds], reward_repeated_true[inds]))
+                my_rews.append((pred_rew, reward_empty_true[inds], reward_repeated_true[inds],done_step,action_true[inds]))
 
             memories[inds, :] = memory[:len(inds), :]
             memory[:len(inds), :] = new_memory
@@ -322,7 +335,7 @@ class ImitationLearning(object):
 
             # Incrementing the remaining indices
             inds = [index + 1 for index in inds]
-
+        self.filter_finished_episodes(my_rews)
         # Here, actual backprop upto args.recurrence happens
         final_loss, final_main_loss, final_aux_loss = 0, 0, 0
         final_entropy, final_policy_loss, final_value_loss = 0, 0, 0
