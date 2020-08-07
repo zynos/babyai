@@ -52,7 +52,7 @@ def main(args):
 
     # Define logger and Tensorboard writer
     header = (["update", "frames", "FPS", "duration", "entropy", "policy_loss", "train_accuracy"]
-              + ["validation_accuracy"])
+              + ["validation_accuracy","main_loss","aux_loss","grad_norm"])
     if args.multi_env is None:
         header.extend(["validation_return", "validation_success_rate"])
     else:

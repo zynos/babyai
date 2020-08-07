@@ -204,7 +204,8 @@ class ImitationLearning(object):
             self.acmodel.eval()
 
         # Log dictionary
-        log = {"entropy": [], "policy_loss": [], "accuracy": []}
+        log = {"entropy": [], "policy_loss": [], "accuracy": [],
+               "main_loss": [], "aux_loss": [], "grad_norm": []}
 
         start_time = time.time()
         frames = 0
@@ -219,6 +220,10 @@ class ImitationLearning(object):
             log["entropy"].append(_log["entropy"])
             log["policy_loss"].append(_log["policy_loss"])
             log["accuracy"].append(_log["accuracy"])
+            log["main_loss"].append(_log["main_loss"])
+            log["aux_loss"].append(_log["aux_loss"])
+            if is_training:
+                log["grad_norm"].append(_log["grad_norm"])
 
             offset += batch_size
         log['total_frames'] = frames
@@ -244,7 +249,7 @@ class ImitationLearning(object):
             empty_rewards[i][-1] = reward
         repeated_rewards = []
         for i, len_ in enumerate(lens):
-            repeated_rewards.append(torch.tensor(rewards[i],device=self.device).expand(len_))
+            repeated_rewards.append(torch.tensor(rewards[i], device=self.device).expand(len_))
 
         return empty_rewards, repeated_rewards
 
@@ -291,7 +296,7 @@ class ImitationLearning(object):
         instr_embedding = self.acmodel._get_instr_embedding(preprocessed_first_obs.instr)
 
         # Loop terminates when every observation in the flat_batch has been handled
-        my_rews=[]
+        my_rews = []
         while True:
             # taking observations and done located at inds
             obs = obss[inds]
@@ -302,9 +307,9 @@ class ImitationLearning(object):
                 model_res = self.acmodel(
                     preprocessed_obs,
                     memory[:len(inds), :], instr_embedding[:len(inds)])
-                new_memory=model_res['memory']
+                new_memory = model_res['memory']
                 pred_rew = model_res["value"]
-                my_rews.append((pred_rew,reward_empty_true[inds],reward_repeated_true[inds]))
+                my_rews.append((pred_rew, reward_empty_true[inds], reward_repeated_true[inds]))
 
             memories[inds, :] = memory[:len(inds), :]
             memory[:len(inds), :] = new_memory
@@ -319,14 +324,14 @@ class ImitationLearning(object):
             inds = [index + 1 for index in inds]
 
         # Here, actual backprop upto args.recurrence happens
-        final_loss = 0
+        final_loss, final_main_loss, final_aux_loss = 0, 0, 0
         final_entropy, final_policy_loss, final_value_loss = 0, 0, 0
 
         indexes = self.starting_indexes(num_frames)
         memory = memories[indexes]
         accuracy = 0
         total_frames = len(indexes) * self.args.recurrence
-        rewards=[]
+        rewards = []
         for _ in range(self.args.recurrence):
             obs = obss[indexes]
             preprocessed_obs = self.obss_preprocessor(obs, device=self.device)
@@ -342,43 +347,53 @@ class ImitationLearning(object):
                 instr_embedding[episode_ids[indexes]])
             if self.use_rudder:
                 predicted_reward = model_results['value']
-                rewards.append((predicted_reward,reward_empty_step,reward_repeated_step,my_done_step))
+                rewards.append((predicted_reward, reward_empty_step, reward_repeated_step, my_done_step))
 
             dist = model_results['dist']
             memory = model_results['memory']
 
             entropy = dist.entropy().mean()
             if self.use_rudder:
-                main_loss, _ = self.calculate_my_loss(predicted_reward, reward_empty_step, my_done_step,
-                                                      reward_repeated_step)
-                policy_loss = main_loss
-                loss= main_loss
+                policy_loss, (main_loss, aux_loss) = self.calculate_my_loss(predicted_reward, reward_empty_step,
+                                                                            my_done_step,
+                                                                            reward_repeated_step)
+                final_main_loss += main_loss
+                final_aux_loss += aux_loss
+                loss = policy_loss
+                accuracy = 0.0
             else:
                 policy_loss = -dist.log_prob(action_step).mean()
                 loss = policy_loss - self.args.entropy_coef * entropy
-            if self.use_rudder:
-                accuracy = 0.0
-            else:
+                final_main_loss += 0
+                final_aux_loss += 0
                 action_pred = dist.probs.max(1, keepdim=True)[1]
                 accuracy += float((action_pred == action_step.unsqueeze(1)).sum()) / total_frames
+
             final_loss += loss
             final_entropy += entropy
             final_policy_loss += policy_loss
             indexes += 1
 
         final_loss /= self.args.recurrence
+        final_aux_loss /= self.args.recurrence
+        final_main_loss /= self.args.recurrence
 
         self.scheduler.step()
+        log = {}
         if is_training:
             self.optimizer.zero_grad()
             final_loss.backward()
+            grad_norm = sum(
+                p.grad.data.norm(2) ** 2 for p in self.acmodel.parameters() if p.grad is not None) ** 0.5
+            log["grad_norm"] = float(grad_norm)
             self.optimizer.step()
         # Learning rate scheduler
         print(final_loss.item())
-        log = {}
         log["entropy"] = float(final_entropy / self.args.recurrence)
         log["policy_loss"] = float(final_policy_loss / self.args.recurrence)
         log["accuracy"] = float(accuracy)
+        log["aux_loss"] = float(aux_loss)
+        log["main_loss"] = float(main_loss)
 
         return log
 
@@ -471,10 +486,13 @@ class ImitationLearning(object):
                     log[key] = np.mean(log[key])
 
                 train_data = [status['i'], status['num_frames'], fps, total_ellapsed_time,
-                              log["entropy"], log["policy_loss"], log["accuracy"]]
+                              log["entropy"], log["policy_loss"], log["accuracy"],
+                              log["main_loss"], log["aux_loss"], log["grad_norm"]]
 
                 logger.info(
-                    "U {} | F {:06} | FPS {:04.0f} | D {} | H {:.3f} | pL {: .3f} | A {: .3f}".format(*train_data))
+                    "U {} | F {:06} | FPS {:04.0f} | D {} | H {:.3f} | pL {: .3f} | A {: .3f} |"
+                    " mainL {:.3f} | auxL {: .3f} | gradN {: .3f}".format(
+                        *train_data))
 
                 # Log the gathered data only when we don't evaluate the validation metrics. It will be logged anyways
                 # afterwards when status['i'] % self.args.val_interval == 0
