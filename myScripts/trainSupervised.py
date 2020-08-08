@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import torch
 import babyai.rl
 from babyai.utils.demos import transform_demos
-from myScripts.MyACModel import ACModelRudder
+from myScripts.MyACModel import ACModel
 from myScripts.ReplayBuffer import ProcessData
 from myScripts.supervisedNet import Net
 from torch.nn.utils import clip_grad_value_
@@ -47,7 +47,7 @@ class Training:
         self.rudder.device = self.device
         obss_preprocessor = babyai.utils.ObssPreprocessor('newDataColl0.01', env.observation_space, 'newDataColl0.01')
 
-        self.rudder.net = ACModelRudder(obss_preprocessor.obs_space, env.action_space,device=self.device,use_memory=True)
+        self.rudder.net = ACModel(obss_preprocessor.obs_space, env.action_space,device=self.device,use_memory=True)
         self.rudder.mu = 1
         self.rudder.quality_threshold = 0.8
         self.rudder.clip_value = 0.5
@@ -575,15 +575,15 @@ def create_episode_len_histogram(path):
     plt.show()
 
 
-# create_episode_len_histogram("../scripts/demos/train/")
+create_episode_len_histogram("../scripts/demos/320kDS/")
 # env = gym.make("BabyAI-PutNextLocal-v0")
 # sys.settrace
-training = Training()
+# training = Training()
 # training.visualize_failed_episode_in_parts(127, 129, "failedVisualized1Million0.5Aux1e-6LRNoAuxTime/",
 #                                            "1Million0.5Aux1e-6LRNoAuxTime/", )
 # training.calc_rew_of_generated_episodes("../scripts/demos/train/")
 # do_multiple_evaluations("models/1Million0.5Aux1e-5LRNoAuxTime/","EVAL_GRU_1Million0.5Aux1e-5LRNoAuxTime/")
-training.train_file_based("../scripts/demos/")
+# training.train_file_based("../scripts/demos/")
 # training.train_file_based("testi/",False)
 # find_unique_episodes("../scripts/replays7/")
 # calc_memory_saving_ret_mean("../scripts/demos/train/")

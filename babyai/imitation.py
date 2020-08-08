@@ -393,14 +393,15 @@ class ImitationLearning(object):
 
         self.scheduler.step()
         log = {}
+        grad_norm = 0.0
         if is_training:
             self.optimizer.zero_grad()
             final_loss.backward()
             grad_norm = sum(
                 p.grad.data.norm(2) ** 2 for p in self.acmodel.parameters() if p.grad is not None) ** 0.5
-            log["grad_norm"] = float(grad_norm)
             self.optimizer.step()
         # Learning rate scheduler
+        log["grad_norm"] = float(grad_norm)
         print("loss, grad norm",final_loss.item(),log["grad_norm"])
         log["entropy"] = float(final_entropy / self.args.recurrence)
         log["policy_loss"] = float(final_policy_loss / self.args.recurrence)
