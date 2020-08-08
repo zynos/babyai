@@ -58,7 +58,8 @@ from babyai.utils.demos import transform_demos
 
 
 def demos_to_pickle_protocol_4():
-    with open("../scripts/demos/realLowerProt.pkl","rb") as f:
+    print("you have to change pack_array in blosc to prot 4 also!")
+    with open("myConcat320K_valid.pkl","rb") as f:
         demos=pickle.load(f)
     lower_prot_demos=[]
     for demo in demos:
@@ -71,7 +72,7 @@ def demos_to_pickle_protocol_4():
         all_images=blosc.pack_array(all_images)
         lower_prot_demos.append((mission,all_images,directions,actions))
 
-    with open("../scripts/demos/realLowerProt.pkl", "wb") as f:
+    with open("myConcat320KLower_valid.pkl", "wb") as f:
         pickle.dump(lower_prot_demos,f,protocol=4)
 
 
