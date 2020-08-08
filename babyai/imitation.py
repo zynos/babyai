@@ -335,7 +335,7 @@ class ImitationLearning(object):
 
             # Incrementing the remaining indices
             inds = [index + 1 for index in inds]
-        self.filter_finished_episodes(my_rews)
+        # self.filter_finished_episodes(my_rews)
         # Here, actual backprop upto args.recurrence happens
         final_loss, final_main_loss, final_aux_loss = 0, 0, 0
         final_entropy, final_policy_loss, final_value_loss = 0, 0, 0
@@ -401,7 +401,7 @@ class ImitationLearning(object):
             log["grad_norm"] = float(grad_norm)
             self.optimizer.step()
         # Learning rate scheduler
-        print(final_loss.item())
+        print("loss, grad norm",final_loss.item(),log["grad_norm"])
         log["entropy"] = float(final_entropy / self.args.recurrence)
         log["policy_loss"] = float(final_policy_loss / self.args.recurrence)
         log["accuracy"] = float(accuracy)
