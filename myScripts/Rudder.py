@@ -1,9 +1,11 @@
 import torch
+from matplotlib.lines import Line2D
 from torch.nn import MSELoss
 # from apex import amp
 from myScripts.supervisedNet import Net
 from myScripts.ReplayBuffer import ReplayBuffer, ProcessData
 import numpy as np
+import matplotlib.pyplot as plt
 # test test
 import multiprocessing as mp
 import logging
@@ -15,7 +17,7 @@ class Rudder:
 
     def __init__(self):
         # for testing supervised
-
+        self.max_predictions=[]
         self.train_timesteps = False
 
     # def __init__(self, mem_dim, nr_procs, obs_space, instr_dim, ac_embed_dim, image_dim, action_space, device):
@@ -60,6 +62,41 @@ class Rudder:
         quality = 1 - (np.abs(diff.item()) / self.mu) * 1 / (1 - self.quality_threshold)
         return quality
 
+    def plot_grad_flow(self,named_parameters):
+        '''Plots the gradients flowing through different layers in the net during training.
+        Can be used for checking for possible gradient vanishing / exploding problems.
+
+        Usage: Plug this function in Trainer class after loss.backwards() as
+        "plot_grad_flow(self.model.named_parameters())" to visualize the gradient flow'''
+        ave_grads = []
+        max_grads = []
+        layers = []
+        for n, p in named_parameters:
+            if p.grad is not None and (p.requires_grad) and ("bias" not in n):
+                layers.append(n)
+                ave_grads.append(p.grad.abs().mean())
+                max_grads.append(p.grad.abs().max())
+        plt.bar(np.arange(len(max_grads)), max_grads, alpha=0.1, lw=1, color="c")
+        plt.bar(np.arange(len(max_grads)), ave_grads, alpha=0.1, lw=1, color="b")
+        plt.hlines(0, 0, len(ave_grads) + 1, lw=2, color="k")
+        plt.xticks(range(0, len(ave_grads), 1), layers, rotation="vertical")
+        plt.xlim(left=0, right=len(ave_grads))
+        plt.ylim(bottom=-0.001, top=0.02)  # zoom in on the lower gradient regions
+        plt.xlabel("Layers")
+        plt.ylabel("average gradient")
+        plt.title("Gradient flow")
+        plt.grid(True)
+        plt.legend([Line2D([0], [0], color="c", lw=4),
+                    Line2D([0], [0], color="b", lw=4),
+                    Line2D([0], [0], color="k", lw=4)], ['max-gradient', 'mean-gradient', 'zero-gradient'])
+        plt.tight_layout()
+        plt.show()
+
+    def plot_maximimum_prediction(self,model_name):
+        plt.title("max predcited reward "+model_name)
+        plt.plot(self.max_predictions)
+        plt.show()
+
     def paper_loss3(self, predictions, returns, pred_plus_ten_ts):
 
         diff = predictions[:, -1] - returns
@@ -68,8 +105,10 @@ class Rudder:
         main_loss = diff ** 2
         # Auxiliary task: predicting final return at every timestep ([..., None] is for correct broadcasting)
         continuous_loss = torch.mean((predictions[:, :] - returns[..., None]) ** 2)
+        self.max_predictions.append(torch.max(predictions).item())
         # continuous_loss = self.mse_loss(predictions[:, :], returns[..., None])
-
+        if main_loss<=0.001 and returns>0:
+            print("low main loss, return",returns.item())
         # loss Le of the prediction of the output at t+10 at each time step t
         le10_loss = 0.0
         # if episode is smaller than 10 the follwoing would produce a NAN
@@ -333,6 +372,7 @@ class Rudder:
         grad_norm = sum(
             p.grad.data.norm(2) ** 2 for p in self.net.parameters() if p.grad is not None) ** 0.5
         clip_grad_value_(self.net.parameters(), self.clip_value)
+        # self.plot_grad_flow(self.net.named_parameters())
 
         self.optimizer.step()
         self.optimizer.zero_grad()

@@ -41,6 +41,7 @@ class Training:
         self.rudder.use_transformer = use_transformer
         self.rudder.transfo_upgrade = False
         self.rudder.aux_loss_multiplier = 0.5
+        assert sum([self.use_widi_lstm, self.use_gru, self.rudder.use_transformer])<=1
 
         self.rudder.device = self.device
         self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128, action_space=7,
@@ -51,10 +52,10 @@ class Training:
         self.rudder.mu = 1
         self.rudder.quality_threshold = 0.8
         self.rudder.clip_value = 0.5
-        self.lr = 1e-5
+        self.lr = 1e-4
         self.weight_dec = 1e-6
         self.rudder.optimizer = torch.optim.Adam(self.rudder.net.parameters(), lr=self.lr, weight_decay=self.weight_dec)
-        self.epochs = 5
+        self.epochs = 10
         self.model_type = "stdLSTm"
         if self.use_widi_lstm:
             self.model_type = "widiLSTM"
@@ -87,7 +88,10 @@ class Training:
     #     episode.loss = loss
     #     episode.returnn = returnn
     #     # print("loss", loss)
-    #     return quality, predictions
+    #     return quality,
+
+    def calc_mean_of_every_n_items(self, lst, n):
+        return np.mean(np.array(lst).reshape(-1, n), axis=1)
 
     def plot(self, returns, train_losses, test_losses):
         plt.title(
@@ -100,10 +104,21 @@ class Training:
         plt.xlabel("episodes")
         main_loss = [l[0] for l in train_losses]
         aux_loss = [l[1] for l in train_losses]
+
+        # main_loss = [l for e in train_losses for l in e[0]]
+        # aux_loss = [l for e in train_losses for l in e[1]]
+        # main_loss = self.calc_mean_of_every_n_items(main_loss, 10)
+        # aux_loss = self.calc_mean_of_every_n_items(aux_loss, 10)
+        plt.yscale("log")
         plt.plot(main_loss, label="train main loss")
         plt.plot(aux_loss, label="train aux loss")
         main_loss = [l[0] for l in test_losses]
         aux_loss = [l[1] for l in test_losses]
+
+        # # main_loss = [l for l in test_losses[0]]
+        # # aux_loss = [l for l in test_losses[1]]
+        # main_loss = [l for e in test_losses for l in e[0]]
+        # aux_loss = [l for e in test_losses for l in e[1]]
         plt.plot(main_loss, label="test main loss")
         plt.plot(aux_loss, label="test aux loss")
         plt.legend(loc="upper left")
@@ -133,6 +148,7 @@ class Training:
 
             returns.append(ep.returnn)
         epoch_loss = (np.mean(main_loss), np.mean(aux_loss))
+        # epoch_loss = (main_loss, aux_loss)
 
         return epoch_loss, returns
 
@@ -202,12 +218,20 @@ class Training:
             returns.extend(returns_)
             train_losses.append([sum(y) / len(y) for y in zip(*batch_losses)])
             print("train loss", train_losses[-1])
+            # train_losses.extend(batch_losses)
+            # print("train loss main", train_losses[-1][0])
+            # print("train loss aux", train_losses[-1][1])
+            # print("returns", returns[i * len(returns_):(i + 1) * len(returns_)])
+
             path = path_start + "validate/"
             batch_losses, returns_ = self.iterate_files(path, training=False, generated_demos=generated_demos)
-            returns.extend(returns_)
+            # returns.extend(returns_)
             test_losses.append([sum(y) / len(y) for y in zip(*batch_losses)])
+            # test_losses.extend(batch_losses)
+
         torch.save(self.rudder.net.state_dict(), self.model_type + "_model.pt")
         self.plot(returns, train_losses, test_losses)
+        self.rudder.plot_maximimum_prediction(self.model_type)
 
         # load test files on after the other
 
@@ -228,7 +252,7 @@ class Training:
         return actions[i]
         # plt.show()
 
-    def load_correct_network_parameters(self,path,file_name):
+    def load_correct_network_parameters(self, path, file_name):
         self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128,
                               action_space=7, device=self.device,
                               use_widi=False, action_only=self.action_only).to(self.device)
@@ -240,7 +264,7 @@ class Training:
         if "GRU" in file_name:
             self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128,
                                   action_space=7, device=self.device,
-                                  use_widi=False, use_gru=True,action_only=self.action_only).to(self.device)
+                                  use_widi=False, use_gru=True, action_only=self.action_only).to(self.device)
 
         if "trans" in file_name:
             self.rudder.net.use_transformer = True
@@ -256,18 +280,19 @@ class Training:
         path = model_path
         files = os.listdir(path)
         ret = []
-        for f in files:
-            print(f)
-            self.load_correct_network_parameters(path,f)
-            loss, returns, quality, predictions, (main_loss, aux_loss) = self.rudder.feed_network(short_episode)
+        for model_file_name in files:
+            print(model_file_name)
+            self.load_correct_network_parameters(path, model_file_name)
+            with torch.no_grad():
+                loss, returns, quality, predictions, (main_loss, aux_loss) = self.rudder.feed_network(short_episode)
             # tmp = torch.zeros_like(predictions)
             # diff = predictions[:, 1:] - predictions[:, :-1]
             # tmp[:, 1:] = diff
             # predictions = tmp
-            ret.append((predictions.squeeze(), f[:-3]))
+            ret.append((predictions.squeeze(), model_file_name[:-3], (loss, main_loss, aux_loss)))
         return ret
 
-    def evaluate_one_episode(self, start, stop, path_start, model_path, short_episode, env):
+    def evaluate_one_episode(self, start, stop, path_start, model_path, short_episode, env,top_titel=None):
         model_predictions = self.get_predictions_from_different_models(model_path, short_episode)
         # loss, returns, quality, predictions = self.rudder.feed_network(short_episode)
         command = {"put": 1, "the": 2, "grey": 3, "key": 4, "next": 5, "to": 6, "red": 7, "box": 8, "yellow": 9,
@@ -289,6 +314,7 @@ class Training:
             # predictions = predictions.squeeze()
             plot_orig = True
             for el in model_predictions:
+                print("loss, main, aux", el[2])
                 action = self.plot_reward_redistribution(short_episode.rewards, el[0], short_episode.actions,
                                                          axarr[0], i, el[1], plot_orig)
                 plot_orig = False
@@ -301,7 +327,10 @@ class Training:
             arr = mpimg.imread(fname)
             axarr[1].imshow(arr)
             axarr[1].title.set_text("next action: " + str(action))
-            axarr[0].title.set_text(command)
+            combined_title=command
+            if top_titel:
+                combined_title+=" "+top_titel
+            axarr[0].title.set_text(combined_title)
             os.remove(fname)
             plt.tight_layout()
             path = "myPics/" + path_start + str(start) + "-" + str(stop) + "/"
@@ -340,6 +369,15 @@ class Training:
         ret.append(episode)
         return ret
 
+    def visualize_low_and_high_loss_episodes(self,path_start,model_path):
+        low_loss, high_loss = self.get_low_and_high_loss_episode(model_path,6)
+        env = gym.make("BabyAI-PutNextLocal-v0")
+        for e in low_loss:
+            loss_str="loss {:.4f} main {:.4f} aux {:.4f}".format(float(e[2]),float(e[3]),float(e[4]))
+            self.evaluate_one_episode("low", "loss", path_start, model_path, e[-1], env,loss_str)
+        for e in high_loss:
+            self.evaluate_one_episode("high", "loss", path_start, model_path, e[-1], env,loss_str)
+
     def visualize_failed_episode_in_parts(self, start, stop, path_start, model_path):
         print(start, stop)
         env = gym.make("BabyAI-PutNextLocal-v0")
@@ -350,6 +388,19 @@ class Training:
         for e in episodes:
             new_stop = len(e.dones)
             self.evaluate_one_episode(new_start, new_stop, path_start, model_path, e, env)
+
+    def get_low_and_high_loss_episode(self, model_path,amount):
+        episodes = read_pkl_files(True,"../scripts/demos/train/")
+        episode_data = []
+        for ep in episodes:
+            model_results = self.get_predictions_from_different_models(model_path,
+                                                                       ep)
+            for tup in model_results:
+                predictions, file_name, (loss, main_loss, aux_loss) = tup
+                episode_data.append([predictions, file_name, loss, main_loss, aux_loss,ep])
+                print("loss, len", loss.item(), len(predictions))
+        episode_data.sort(key=lambda x: x[2])
+        return episode_data[:amount],episode_data[-amount:]
 
     def get_random_episode_from_range(self, start, stop):
         episodes = read_pkl_files(True)
@@ -450,14 +501,17 @@ def read_pkl_file2s():
     return all_episodes
 
 
-def read_pkl_files(evaluate):
+def read_pkl_files(evaluate,path=None):
     training2 = Training()
     all_episodes = []
-    if evaluate:
-        path = "../scripts/demos/validate/"
-        # path = "../scripts/replays4/"
-    else:
-        path = "../scripts/replays3/"
+    if not path:
+        if evaluate:
+            path = "../scripts/demos/validate/"
+            # path = "../scripts/replays4/"
+        else:
+            path = "../scripts/replays3/"
+
+
     files = os.listdir(path)
     limit = int(len(files) * 0.8)
     for file in files:
@@ -576,10 +630,11 @@ def create_episode_len_histogram(path):
 # env = gym.make("BabyAI-PutNextLocal-v0")
 # sys.settrace
 training = Training()
+# training.visualize_low_and_high_loss_episodes("lossVisualized/","models/")
 # training.visualize_failed_episode_in_parts(127, 129, "failedVisualized1Million0.5Aux1e-6LRNoAuxTime/",
 #                                            "1Million0.5Aux1e-6LRNoAuxTime/", )
 # training.calc_rew_of_generated_episodes("../scripts/demos/train/")
-# do_multiple_evaluations("models/1Million0.5Aux1e-5LRNoAuxTime/","EVAL_GRU_1Million0.5Aux1e-5LRNoAuxTime/")
+# do_multiple_evaluations("models/1Million0.5Aux1e-5LRNoAuxTime/", "EVAL_GRU_1Million0.5Aux1e-5LRNoAuxTime/")
 training.train_file_based("../scripts/demos/")
 # training.train_file_based("testi/",False)
 # find_unique_episodes("../scripts/replays7/")

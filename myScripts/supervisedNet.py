@@ -122,21 +122,21 @@ class Net(nn.Module):
         self.lambda_replace = lambda_replace_func
 
         if self.use_widi_lstm:
-            # self.lstm = LSTMLayer(
-            #     in_features=self.combined_input_dim, out_features=self.rudder_lstm_out, inputformat='NLC',
-            #     # cell input: initialize weights to forward inputs with xavier, disable connections to recurrent inputs
-            #     w_ci=(torch.nn.init.xavier_normal_, False),
-            #     # input gate: disable connections to forward inputs, initialize weights to recurrent inputs with xavier
-            #     w_ig=(False, torch.nn.init.xavier_normal_),
-            #     # output gate: disable all connection (=no forget gate) and disable bias
-            #     w_og=False, b_og=False,
-            #     # forget gate: disable all connection (=no forget gate) and disable bias
-            #     w_fg=False, b_fg=False,
-            #     # LSTM output activation is set to identity function
-            #     a_out=self.lambda_replace
-            # )
             self.lstm = LSTMLayer(
-                in_features=self.combined_input_dim, out_features=self.rudder_lstm_out, inputformat='NLC')
+                in_features=self.combined_input_dim, out_features=self.rudder_lstm_out, inputformat='NLC',
+                # cell input: initialize weights to forward inputs with xavier, disable connections to recurrent inputs
+                w_ci=(torch.nn.init.xavier_normal_, False),
+                # input gate: disable connections to forward inputs, initialize weights to recurrent inputs with xavier
+                w_ig=(False, torch.nn.init.xavier_normal_),
+                # output gate: disable all connection (=no forget gate) and disable bias
+                w_og=False, b_og=False,
+                # forget gate: disable all connection (=no forget gate) and disable bias
+                w_fg=False, b_fg=False,
+                # LSTM output activation is set to identity function
+                a_out=self.lambda_replace
+            )
+            # self.lstm = LSTMLayer(
+            #     in_features=self.combined_input_dim, out_features=self.rudder_lstm_out, inputformat='NLC')
 
         else:
             if self.use_gru:
