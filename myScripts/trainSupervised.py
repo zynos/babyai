@@ -127,6 +127,7 @@ class Training:
         figure.set_size_inches(19.2, self.out_image_height)
         plt.savefig("trainResult_" + self.model_type, dpi=100)
         # plt.show()
+        plt.close()
 
     def random_train_test_split(self, episodes):
         random.shuffle(episodes)
