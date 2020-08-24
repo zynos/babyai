@@ -37,7 +37,7 @@ class Training:
         self.image_dim = 128
         self.instr_dim = 128
         self.use_widi_lstm = False
-        self.use_gru = False
+        self.use_gru = True
         self.action_only = False
         self.rudder.use_transformer = use_transformer
         self.rudder.transfo_upgrade = False

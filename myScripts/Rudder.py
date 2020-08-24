@@ -97,8 +97,8 @@ class Rudder:
     def plot_maximimum_prediction(self,model_name):
         plt.title("predicted reward "+model_name)
         plt.plot(self.max_predictions,"bo", label="maximum")
-        plt.plot(self.min_predictions,"ro", label="minimum")
         plt.plot(self.mean_predictions,"go", label="mean",alpha=0.8)
+        plt.plot(self.min_predictions,"ro", label="minimum")
         plt.legend(loc="upper left")
         figure = plt.gcf()  # get current figure
         figure.set_size_inches(19.2, 10.8)
@@ -117,8 +117,8 @@ class Rudder:
         self.min_predictions.append(torch.min(predictions).item())
         self.mean_predictions.append(torch.mean(predictions).item())
         # continuous_loss = self.mse_loss(predictions[:, :], returns[..., None])
-        if main_loss<=0.001 and returns>0:
-            print("low main loss, return",returns.item())
+        # if main_loss<=0.001 and returns>0:
+        #     print("low main loss, return",returns.item())
         # loss Le of the prediction of the output at t+10 at each time step t
         le10_loss = 0.0
         # if episode is smaller than 10 the follwoing would produce a NAN
