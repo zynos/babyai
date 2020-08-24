@@ -21,7 +21,8 @@ from sklearn.model_selection import train_test_split
 import matplotlib.image as mpimg
 import datetime
 from pathlib import Path
-
+_ = torch.manual_seed(123)
+random.seed(1234)
 
 class Training:
 
@@ -55,7 +56,7 @@ class Training:
         self.lr = 1e-4
         self.weight_dec = 1e-6
         self.rudder.optimizer = torch.optim.Adam(self.rudder.net.parameters(), lr=self.lr, weight_decay=self.weight_dec)
-        self.epochs = 10
+        self.epochs = 15
         self.model_type = "stdLSTm"
         if self.use_widi_lstm:
             self.model_type = "widiLSTM"
@@ -189,6 +190,7 @@ class Training:
             episodes = self.load_generated_demos(path)
         else:
             episodes = self.load_my_demos(path)
+        random.shuffle(episodes)
         print("episodes in batch", len(episodes))
         epoch_loss, returns_ = self.get_losses(episodes, training)
         del episodes

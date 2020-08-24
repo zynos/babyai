@@ -17,6 +17,8 @@ class Rudder:
 
     def __init__(self):
         # for testing supervised
+        self.mean_predictions = []
+        self.min_predictions = []
         self.max_predictions=[]
         self.train_timesteps = False
 
@@ -93,12 +95,18 @@ class Rudder:
         plt.show()
 
     def plot_maximimum_prediction(self,model_name):
-        plt.title("max predcited reward "+model_name)
-        plt.plot(self.max_predictions)
+        plt.title("predicted reward "+model_name)
+        plt.plot(self.max_predictions,"bo", label="maximum")
+        plt.plot(self.min_predictions,"ro", label="minimum")
+        plt.plot(self.mean_predictions,"go", label="mean",alpha=0.8)
+        plt.legend(loc="upper left")
+        figure = plt.gcf()  # get current figure
+        figure.set_size_inches(19.2, 10.8)
+        plt.savefig("trainResult_predicition_" + model_name, dpi=100)
         plt.show()
 
     def paper_loss3(self, predictions, returns, pred_plus_ten_ts):
-
+        returns*=20
         diff = predictions[:, -1] - returns
         # Main task: predicting return at last timestep
         quality = self.calc_quality(diff)
@@ -106,6 +114,8 @@ class Rudder:
         # Auxiliary task: predicting final return at every timestep ([..., None] is for correct broadcasting)
         continuous_loss = torch.mean((predictions[:, :] - returns[..., None]) ** 2)
         self.max_predictions.append(torch.max(predictions).item())
+        self.min_predictions.append(torch.min(predictions).item())
+        self.mean_predictions.append(torch.mean(predictions).item())
         # continuous_loss = self.mse_loss(predictions[:, :], returns[..., None])
         if main_loss<=0.001 and returns>0:
             print("low main loss, return",returns.item())
