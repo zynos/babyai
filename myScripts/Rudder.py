@@ -92,7 +92,7 @@ class Rudder:
                     Line2D([0], [0], color="b", lw=4),
                     Line2D([0], [0], color="k", lw=4)], ['max-gradient', 'mean-gradient', 'zero-gradient'])
         plt.tight_layout()
-        plt.show()
+        # plt.show()
 
     def plot_maximimum_prediction(self,model_name):
         plt.title("predicted reward "+model_name)
@@ -103,7 +103,7 @@ class Rudder:
         figure = plt.gcf()  # get current figure
         figure.set_size_inches(19.2, 10.8)
         plt.savefig("trainResult_predicition_" + model_name, dpi=100)
-        plt.show()
+        # plt.show()
 
     def paper_loss3(self, predictions, returns, pred_plus_ten_ts):
         returns*=20

@@ -13,6 +13,7 @@ setup(
         "torch>=0.4.1",
         "Pillow>=7.1.2",
         'blosc>=1.5.1',
+        "tensorboardX>=2.1",
         'gym_minigrid @ https://github.com/maximecb/gym-minigrid/archive/master.zip',
 	'widis-lstm-tools @ git+https://github.com/widmi/widis-lstm-tools'
     ],

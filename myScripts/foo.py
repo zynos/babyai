@@ -8,9 +8,9 @@ def create_subset():
     file="../scripts/demos/shuffled_train0.pkl"
     with open(file,"rb") as f:
         episodes = pickle.load(f)
-        episodes = episodes[1000:1500]
+        episodes = episodes[10000:12000]
 
-    with open("../scripts/demos/500Episodes.pkl","wb") as f2:
+    with open("../scripts/demos/10KvalidSet.pkl","wb") as f2:
         pickle.dump(episodes,f2)
 #
 # def lower_protocol():
@@ -58,9 +58,9 @@ def create_subset():
 from babyai.utils.demos import transform_demos
 
 
-def demos_to_pickle_protocol_4():
+def demos_to_pickle_protocol_4(path,file_name):
     print("you have to change pack_array in blosc to prot 4 also!")
-    with open("myConcat320K_valid.pkl","rb") as f:
+    with open(path+file_name,"rb") as f:
         demos=pickle.load(f)
     lower_prot_demos=[]
     for demo in demos:
@@ -73,8 +73,13 @@ def demos_to_pickle_protocol_4():
         all_images=blosc.pack_array(all_images)
         lower_prot_demos.append((mission,all_images,directions,actions))
 
-    with open("myConcat320KLower_valid.pkl", "wb") as f:
+    with open(path+"prot4_"+file_name, "wb") as f:
         pickle.dump(lower_prot_demos,f,protocol=4)
 
 
+def demo_folder_to_lower_protocol(path):
+    files= os.listdir(path)
+    for f in files:
+        demos_to_pickle_protocol_4(path,f)
 create_subset()
+# demo_folder_to_lower_protocol("/home/nick/Downloads/trainset1M/")

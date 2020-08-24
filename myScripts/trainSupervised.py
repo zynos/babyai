@@ -36,7 +36,7 @@ class Training:
         print("using ", self.device)
         self.image_dim = 128
         self.instr_dim = 128
-        self.use_widi_lstm = True
+        self.use_widi_lstm = False
         self.use_gru = False
         self.action_only = False
         self.rudder.use_transformer = use_transformer
@@ -56,7 +56,7 @@ class Training:
         self.lr = 1e-4
         self.weight_dec = 1e-6
         self.rudder.optimizer = torch.optim.Adam(self.rudder.net.parameters(), lr=self.lr, weight_decay=self.weight_dec)
-        self.epochs = 15
+        self.epochs = 10
         self.model_type = "stdLSTm"
         if self.use_widi_lstm:
             self.model_type = "widiLSTM"
@@ -126,7 +126,7 @@ class Training:
         figure = plt.gcf()  # get current figure
         figure.set_size_inches(19.2, self.out_image_height)
         plt.savefig("trainResult_" + self.model_type, dpi=100)
-        plt.show()
+        # plt.show()
 
     def random_train_test_split(self, episodes):
         random.shuffle(episodes)
