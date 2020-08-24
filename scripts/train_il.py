@@ -71,6 +71,7 @@ def main(args):
     # that one update will take much longer that one write to the log
     csv_writer = csv.writer(open(csv_path, 'a', 1))
     if first_created:
+        print("creating and writing with",csv_writer)
         csv_writer.writerow(header)
 
     # Get the status path
