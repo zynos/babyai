@@ -236,7 +236,7 @@ class ImitationLearning(object):
     def calculate_reward(self, step_count, max_steps):
         if step_count == max_steps:
             return 0.0
-        return 1 - 0.9 * (step_count / max_steps)
+        return (1 - 0.9 * (step_count / max_steps))*20
 
     def my_stuff(self, batch):
         lens = [len(episode) for episode in batch]
