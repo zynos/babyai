@@ -38,7 +38,7 @@ class Training:
         self.device = "cuda"
         self.image_dim = 128
         self.instr_dim = 128
-        self.use_widi_lstm = True
+        self.use_widi_lstm = False
         self.use_gru = False
         self.action_only = False
         self.rudder.use_transformer = use_transformer
