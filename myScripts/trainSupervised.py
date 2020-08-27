@@ -21,8 +21,8 @@ import matplotlib.image as mpimg
 import datetime
 from pathlib import Path
 
-_ = torch.manual_seed(123)
-random.seed(1234)
+# _ = torch.manual_seed(123)
+# random.seed(1234)
 
 
 class Training:
@@ -39,7 +39,7 @@ class Training:
         print("using ", self.device)
         self.image_dim = 128
         self.instr_dim = 128
-        self.use_widi_lstm = True
+        self.use_widi_lstm = False
         self.use_gru = False
         self.action_only = False
         self.rudder.use_transformer = use_transformer
