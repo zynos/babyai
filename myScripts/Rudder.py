@@ -17,6 +17,8 @@ class Rudder:
 
     def __init__(self):
         # for testing supervised
+        self.main_losses = []
+        self.aux_losses = []
         self.mean_predictions = []
         self.min_predictions = []
         self.max_predictions=[]
@@ -108,6 +110,19 @@ class Rudder:
         # plt.show()
         plt.close()
 
+    def plot_reduced_loss(self,model_name,reduce_by=100):
+        reduced_main_l = np.mean(self.main_losses.reshape(-1, reduce_by), axis=1)
+        reduced_aux_l = np.mean(self.aux_losses.reshape(-1, reduce_by), axis=1)
+        plt.title("predicted reward " + model_name)
+        plt.plot(reduced_main_l,  label="main loss")
+        plt.plot(reduced_aux_l, label="aux loss")
+        plt.legend(loc="upper left")
+        figure = plt.gcf()  # get current figure
+        figure.set_size_inches(19.2, 10.8)
+        plt.savefig("trainResult_reducedLoss_" + model_name, dpi=100)
+        # plt.show()
+        plt.close()
+
     def scale_rewards_minus_one_to_1(self,rewards):
         rewards = (rewards-self.mean)/self.std_dev
         return rewards
@@ -119,6 +134,14 @@ class Rudder:
             rewards *= self.reward_scale
         return rewards
 
+    def store_predictions_for_plotting(self,predictions):
+        self.max_predictions.append(torch.max(predictions).item())
+        self.min_predictions.append(torch.min(predictions).item())
+        self.mean_predictions.append(torch.mean(predictions).item())
+
+    def store_losses_for_plotting(self,main_loss,aux_loss):
+        self.main_losses.append(main_loss)
+        self.aux_losses.append(aux_loss)
 
 
     def paper_loss3(self, predictions, returns, pred_plus_ten_ts):
@@ -129,9 +152,7 @@ class Rudder:
         main_loss = diff ** 2
         # Auxiliary task: predicting final return at every timestep ([..., None] is for correct broadcasting)
         continuous_loss = torch.mean((predictions[:, :] - returns[..., None]) ** 2)
-        self.max_predictions.append(torch.max(predictions).item())
-        self.min_predictions.append(torch.min(predictions).item())
-        self.mean_predictions.append(torch.mean(predictions).item())
+        self.store_predictions_for_plotting(predictions)
         # continuous_loss = self.mse_loss(predictions[:, :], returns[..., None])
         # if main_loss<=0.001 and returns>0:
         #     print("low main loss, return",returns.item())
@@ -147,7 +168,13 @@ class Rudder:
         # Combine losses
         aux_loss = continuous_loss + le10_loss
         loss = main_loss + self.aux_loss_multiplier * aux_loss
-        return loss, quality, (main_loss.detach().clone().item(), aux_loss.detach().clone().item())
+
+
+        main_l_copy = main_loss.detach().clone().item()
+        aux_l_copy =  aux_loss.detach().clone().item()
+        self.store_losses_for_plotting(main_l_copy,aux_l_copy)
+
+        return loss, quality, (main_l_copy,aux_l_copy)
 
         # def lossfunction(self, predictions, returns):
 
