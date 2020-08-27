@@ -22,6 +22,7 @@ class Rudder:
         self.max_predictions=[]
         self.train_timesteps = False
 
+
     # def __init__(self, mem_dim, nr_procs, obs_space, instr_dim, ac_embed_dim, image_dim, action_space, device):
     #     self.nr_procs = nr_procs
     #     self.clip_value = 0.5
@@ -107,8 +108,21 @@ class Rudder:
         # plt.show()
         plt.close()
 
+    def scale_rewards_minus_one_to_1(self,rewards):
+        rewards = (rewards-self.mean)/self.std_dev
+        return rewards
+
+    def scale_rewards(self,rewards,minus_to_one_scale=False):
+        if minus_to_one_scale:
+            rewards = self.scale_rewards_minus_one_to_1(rewards)
+        else:
+            rewards *= self.reward_scale
+        return rewards
+
+
+
     def paper_loss3(self, predictions, returns, pred_plus_ten_ts):
-        returns*=20
+        returns=self.scale_rewards(returns,self.minus_to_one_scale)
         diff = predictions[:, -1] - returns
         # Main task: predicting return at last timestep
         quality = self.calc_quality(diff)

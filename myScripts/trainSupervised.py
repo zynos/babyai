@@ -4,7 +4,6 @@ import re
 import sys
 import time
 from collections import Counter
-
 import babyai
 import gym
 import matplotlib.pyplot as plt
@@ -21,8 +20,10 @@ from sklearn.model_selection import train_test_split
 import matplotlib.image as mpimg
 import datetime
 from pathlib import Path
+
 _ = torch.manual_seed(123)
 random.seed(1234)
+
 
 class Training:
 
@@ -32,17 +33,19 @@ class Training:
         self.total_pics = 0
         self.grad_norms = []
         self.rudder = Rudder()
+        self.rudder.reward_scale = 1
+        self.rudder.minus_to_one_scale = True
         self.device = "cuda"
         print("using ", self.device)
         self.image_dim = 128
         self.instr_dim = 128
-        self.use_widi_lstm = False
-        self.use_gru = True
+        self.use_widi_lstm = True
+        self.use_gru = False
         self.action_only = False
         self.rudder.use_transformer = use_transformer
         self.rudder.transfo_upgrade = False
         self.rudder.aux_loss_multiplier = 0.5
-        assert sum([self.use_widi_lstm, self.use_gru, self.rudder.use_transformer])<=1
+        assert sum([self.use_widi_lstm, self.use_gru, self.rudder.use_transformer]) <= 1
 
         self.rudder.device = self.device
         self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128, action_space=7,
@@ -209,7 +212,12 @@ class Training:
                 returns.extend(returns_)
         return epoch_losses, returns
 
+    def calculate_rewards_from_length(self, lens, max_len):
+        rewards = [1 - 0.9 * (l / max_len) if l != max_len else 0 for l in lens]
+        return rewards
+
     def train_file_based(self, path_start, generated_demos=True):
+        self.calc_and_set_mean_and_stddev_from_episode_lens(path_start+"train/")
         train_losses = []
         test_losses = []
         returns = []
@@ -242,9 +250,10 @@ class Training:
         action_dict = {0: "turn left", 1: "turn right", 2: "move forward", 3: "pick up", 4: "drop", 5: "toggle",
                        6: "done"}
         actions = [action_dict[a.item()] for a in actions]
-        rews = orig_rews.cpu().numpy()
         redistributed_rews = redistributed_rews.cpu().squeeze().numpy()
         if plot_orig:
+            rews = orig_rews.cpu().clone().numpy()
+            rews = self.rudder.scale_rewards(rews, self.rudder.minus_to_one_scale)
             ax.plot(rews, label="original rewards")
         ax.plot(redistributed_rews, label="redistributed rewards " + str(label))
         ax.set_xticks(list(range(len(actions))))
@@ -295,7 +304,7 @@ class Training:
             ret.append((predictions.squeeze(), model_file_name[:-3], (loss, main_loss, aux_loss)))
         return ret
 
-    def evaluate_one_episode(self, start, stop, path_start, model_path, short_episode, env,top_titel=None):
+    def evaluate_one_episode(self, start, stop, path_start, model_path, short_episode, env, top_titel=None):
         model_predictions = self.get_predictions_from_different_models(model_path, short_episode)
         # loss, returns, quality, predictions = self.rudder.feed_network(short_episode)
         command = {"put": 1, "the": 2, "grey": 3, "key": 4, "next": 5, "to": 6, "red": 7, "box": 8, "yellow": 9,
@@ -330,9 +339,9 @@ class Training:
             arr = mpimg.imread(fname)
             axarr[1].imshow(arr)
             axarr[1].title.set_text("next action: " + str(action))
-            combined_title=command
+            combined_title = command
             if top_titel:
-                combined_title+=" "+top_titel
+                combined_title += " " + top_titel
             axarr[0].title.set_text(combined_title)
             os.remove(fname)
             plt.tight_layout()
@@ -372,14 +381,17 @@ class Training:
         ret.append(episode)
         return ret
 
-    def visualize_low_and_high_loss_episodes(self,path_start,model_path):
-        low_loss, high_loss = self.get_low_and_high_loss_episode(model_path,6)
+    def visualize_low_and_high_loss_episodes(self, path_to_train_episodes,path_start, model_path, amount):
+        self.calc_and_set_mean_and_stddev_from_episode_lens(path_to_train_episodes)
+
+        low_loss, high_loss = self.get_low_and_high_loss_episode(model_path, amount)
         env = gym.make("BabyAI-PutNextLocal-v0")
-        for e in low_loss:
-            loss_str="loss {:.4f} main {:.4f} aux {:.4f}".format(float(e[2]),float(e[3]),float(e[4]))
-            self.evaluate_one_episode("low", "loss", path_start, model_path, e[-1], env,loss_str)
         for e in high_loss:
-            self.evaluate_one_episode("high", "loss", path_start, model_path, e[-1], env,loss_str)
+            loss_str = "loss {:.4f} main {:.4f} aux {:.4f}".format(float(e[2]), float(e[3]), float(e[4]))
+            self.evaluate_one_episode("high", "loss", path_start, model_path, e[-1], env, loss_str)
+        for e in low_loss:
+            loss_str = "loss {:.4f} main {:.4f} aux {:.4f}".format(float(e[2]), float(e[3]), float(e[4]))
+            self.evaluate_one_episode("low", "loss", path_start, model_path, e[-1], env, loss_str)
 
     def visualize_failed_episode_in_parts(self, start, stop, path_start, model_path):
         print(start, stop)
@@ -392,18 +404,18 @@ class Training:
             new_stop = len(e.dones)
             self.evaluate_one_episode(new_start, new_stop, path_start, model_path, e, env)
 
-    def get_low_and_high_loss_episode(self, model_path,amount):
-        episodes = read_pkl_files(True,"../scripts/demos/train/")
+    def get_low_and_high_loss_episode(self, model_path, amount):
+        episodes = read_pkl_files(True, "../scripts/demos/train/")
         episode_data = []
         for ep in episodes:
             model_results = self.get_predictions_from_different_models(model_path,
                                                                        ep)
             for tup in model_results:
                 predictions, file_name, (loss, main_loss, aux_loss) = tup
-                episode_data.append([predictions, file_name, loss, main_loss, aux_loss,ep])
+                episode_data.append([predictions, file_name, loss, main_loss, aux_loss, ep])
                 print("loss, len", loss.item(), len(predictions))
         episode_data.sort(key=lambda x: x[2])
-        return episode_data[:amount],episode_data[-amount:]
+        return episode_data[:amount], episode_data[-amount:]
 
     def get_random_episode_from_range(self, start, stop):
         episodes = read_pkl_files(True)
@@ -465,6 +477,23 @@ class Training:
             episodes = pickle.load(f)
         return episodes
 
+    def calc_and_set_mean_and_stddev_from_episode_lens(self, path):
+        files = [f for f in os.listdir(path) if os.path.isfile(path + f)]
+        lens = []
+        total = 0
+        for file in files:
+            with open(path + file, "rb") as f:
+                episodes = pickle.load(f)
+                total += len(episodes)
+                [lens.append(len(e[2])) for e in episodes]
+        assert len(lens) >= 1
+        c = Counter(lens)
+        print(c)
+        max_len = 128
+        rewards = self.calculate_rewards_from_length(lens, max_len)
+        self.rudder.mean = np.mean(rewards)
+        self.rudder.std_dev = np.std(rewards)
+
     def calc_rew_of_generated_episodes(self, path):
         rews = []
         lens = []
@@ -504,7 +533,7 @@ def read_pkl_file2s():
     return all_episodes
 
 
-def read_pkl_files(evaluate,path=None):
+def read_pkl_files(evaluate, path=None):
     training2 = Training()
     all_episodes = []
     if not path:
@@ -513,7 +542,6 @@ def read_pkl_files(evaluate,path=None):
             # path = "../scripts/replays4/"
         else:
             path = "../scripts/replays3/"
-
 
     files = os.listdir(path)
     limit = int(len(files) * 0.8)
@@ -607,6 +635,19 @@ def extract_positive_return_episodes(src_path, dest_path):
         pickle.dump(pos_rets, f)
 
 
+def plot_rewards(rewards):
+    mean_rew = np.mean(rewards)
+
+    w = Counter(rewards)
+    plt.bar(w.keys(), w.values(), 0.01)
+    plt.xlabel("return of episode")
+    plt.ylabel("count")
+    plt.yscale('log')
+    plt.title("mean return {:.2f}".format(mean_rew) +
+              " std: {:.2f}".format(np.std(rewards)) + " var: {:.2f}".format(np.var(rewards)))
+    plt.show()
+
+
 def create_episode_len_histogram(path):
     files = [f for f in os.listdir(path) if os.path.isfile(path + f)]
     lens = []
@@ -619,7 +660,7 @@ def create_episode_len_histogram(path):
     c = Counter(lens)
     print(c)
     max_len = 128
-    rewards = [1 - 0.9 * (l / max_len) for l in lens]
+    rewards = training.calculate_rewards_from_length(lens, max_len)
     mean_rew = np.mean(rewards)
     plt.xlabel("episode length")
     plt.ylabel("count")
@@ -628,18 +669,29 @@ def create_episode_len_histogram(path):
     plt.bar(c.keys(), c.values())
     plt.show()
 
+    rewards = np.array(rewards)
+    plot_rewards(rewards)
 
+    # rewards = rewards*1.84-0.92
+    # rewards = rewards*2.42-1.1
+    rewards = (rewards - np.mean(rewards)) / np.std(rewards)
+
+    plot_rewards(rewards)
+
+
+# dir2 = "/home/nick/Downloads/trainset1M/orig/"
 # create_episode_len_histogram("../scripts/demos/train/")
+# create_episode_len_histogram(dir2)
 # env = gym.make("BabyAI-PutNextLocal-v0")
 # sys.settrace
 training = Training()
-# training.visualize_low_and_high_loss_episodes("lossVisualized/","models/")
+training.visualize_low_and_high_loss_episodes("/home/nick/PycharmProjects/babyAI/babyai/scripts/demos/train/"
+                                              ,"lossVisualizedMinus1Plus1LSTMandGRU/","models/",6)
 # training.visualize_failed_episode_in_parts(127, 129, "failedVisualized1Million0.5Aux1e-6LRNoAuxTime/",
 #                                            "1Million0.5Aux1e-6LRNoAuxTime/", )
 # training.calc_rew_of_generated_episodes("../scripts/demos/train/")
 # do_multiple_evaluations("models/1Million0.5Aux1e-5LRNoAuxTime/", "EVAL_GRU_1Million0.5Aux1e-5LRNoAuxTime/")
-training.train_file_based("../scripts/demos/")
-# training.train_file_based("testi/",False)
+# training.train_file_based("../scripts/demos/")
 # find_unique_episodes("../scripts/replays7/")
 # calc_memory_saving_ret_mean("../scripts/demos/train/")
 # my_path = "testi/"

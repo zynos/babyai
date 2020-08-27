@@ -77,9 +77,23 @@ def demos_to_pickle_protocol_4(path,file_name):
         pickle.dump(lower_prot_demos,f,protocol=4)
 
 
-def demo_folder_to_lower_protocol(path):
-    files= os.listdir(path)
-    for f in files:
-        demos_to_pickle_protocol_4(path,f)
-create_subset()
+
+# def demo_folder_to_lower_protocol(path):
+#     files= os.listdir(path)
+#     for f in files:
+#         demos_to_pickle_protocol_4(path,f)
+# create_subset()
 # demo_folder_to_lower_protocol("/home/nick/Downloads/trainset1M/")
+
+def scale_rewards_minus_one_to_1(rewards):
+    a=-1
+    b=1
+    return a+((rewards-rewards.min())*(b-a))/\
+           (rewards.max()-rewards.min())
+#
+# rew=torch.zeros(10)
+# rew[-1]=1
+# print(scale_rewards_minus_one_to_1(rew))
+
+r=torch.randn(100000)
+print(r.min())
