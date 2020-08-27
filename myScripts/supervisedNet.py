@@ -36,7 +36,7 @@ class ExpertControllerFiLM(nn.Module):
 
 class Net(nn.Module):
     def __init__(self, image_dim,  instr_dim, ac_embed_dim, action_space,device,use_widi,
-                 action_only,use_transformer=False,use_gru=False,transfo_upgrade=False):
+                 action_only,use_transformer=False,use_gru=False,transfo_upgrade=False,use_unit_widi=False):
         super(Net, self).__init__()
         self.action_space = action_space
         self.use_transformer = use_transformer
@@ -48,6 +48,7 @@ class Net(nn.Module):
         self.word_embedding = nn.Embedding(100, self.instr_dim)
         self.compressed_embedding = 128
         self.use_widi_lstm = use_widi
+        self.use_uninit_widi = use_unit_widi
         self.use_gru = use_gru
         # self.combined_input_dim = action_space.n + self.compressed_embedding + instr_dim + image_dim
         # embed only
@@ -135,8 +136,9 @@ class Net(nn.Module):
                 # LSTM output activation is set to identity function
                 a_out=self.lambda_replace
             )
-            # self.lstm = LSTMLayer(
-            #     in_features=self.combined_input_dim, out_features=self.rudder_lstm_out, inputformat='NLC')
+        if self.use_uninit_widi:
+            self.lstm = LSTMLayer(
+                in_features=self.combined_input_dim, out_features=self.rudder_lstm_out, inputformat='NLC')
 
         else:
             if self.use_gru:
@@ -240,7 +242,7 @@ class Net(nn.Module):
             #     x, hidden = self.lstm(x)
             # else:
             #     x, hidden = self.lstm(x, hidden)
-            if self.use_widi_lstm:
+            if self.use_widi_lstm or self.use_uninit_widi:
                 x, hidden = self.lstm(x, return_all_seq_pos=True)
             else:
                 x, hidden = self.lstm(x)

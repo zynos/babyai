@@ -39,19 +39,20 @@ class Training:
         self.image_dim = 128
         self.instr_dim = 128
         self.use_widi_lstm = False
+        self.use_widi_uninit = False
         self.use_gru = False
         self.action_only = False
         self.rudder.use_transformer = use_transformer
         self.rudder.transfo_upgrade = False
         self.rudder.aux_loss_multiplier = 0.5
-        assert sum([self.use_widi_lstm, self.use_gru, self.rudder.use_transformer]) <= 1
+        assert sum([self.use_widi_uninit,self.use_widi_lstm, self.use_gru, self.rudder.use_transformer]) <= 1
 
         self.rudder.device = self.device
         self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128, action_space=7,
                               device=self.device,
                               use_widi=self.use_widi_lstm, action_only=self.action_only,
                               use_transformer=self.rudder.use_transformer, use_gru=self.use_gru,
-                              transfo_upgrade=self.rudder.transfo_upgrade).to(self.device)
+                              transfo_upgrade=self.rudder.transfo_upgrade,use_unit_widi=self.use_widi_uninit).to(self.device)
         self.rudder.mu = 1
         self.rudder.quality_threshold = 0.8
         self.rudder.clip_value = 0.5
@@ -68,6 +69,8 @@ class Training:
             self.model_type = "transformerEncoder"
         if self.rudder.transfo_upgrade:
             self.model_type = "transformerEncoder_UP"
+        if self.use_widi_uninit:
+            self.model_type = "widi_unInit"
         print("using ", self.device,self.model_type)
 
     # def train_and_set_metrics(self, episode):
@@ -269,17 +272,22 @@ class Training:
         self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128,
                               action_space=7, device=self.device,
                               use_widi=False, action_only=self.action_only).to(self.device)
-        if "widi" in file_name:
+        if "unInit" in file_name:
+            self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128,
+                                  action_space=7, device=self.device,
+                                  use_widi=False, action_only=self.action_only,use_unit_widi=True).to(self.device)
+
+        elif "widi" in file_name and "unInit" not in file_name:
             self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128,
                                   action_space=7, device=self.device,
                                   use_widi=True, action_only=self.action_only).to(self.device)
 
-        if "GRU" in file_name:
+        elif "GRU" in file_name:
             self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128,
                                   action_space=7, device=self.device,
                                   use_widi=False, use_gru=True, action_only=self.action_only).to(self.device)
 
-        if "trans" in file_name:
+        elif "trans" in file_name:
             self.rudder.net.use_transformer = True
             if "UP" in file_name:
                 self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128,

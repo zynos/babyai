@@ -111,8 +111,8 @@ class Rudder:
         plt.close()
 
     def plot_reduced_loss(self,model_name,reduce_by=100):
-        reduced_main_l = np.mean(self.main_losses.reshape(-1, reduce_by), axis=1)
-        reduced_aux_l = np.mean(self.aux_losses.reshape(-1, reduce_by), axis=1)
+        reduced_main_l = np.mean(np.array(self.main_losses).reshape(-1, reduce_by), axis=1)
+        reduced_aux_l = np.mean(np.array(self.aux_losses).reshape(-1, reduce_by), axis=1)
         plt.title("predicted reward " + model_name)
         plt.plot(reduced_main_l,  label="main loss")
         plt.plot(reduced_aux_l, label="aux loss")
