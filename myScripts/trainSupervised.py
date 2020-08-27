@@ -36,7 +36,6 @@ class Training:
         self.rudder.reward_scale = 1
         self.rudder.minus_to_one_scale = True
         self.device = "cuda"
-        print("using ", self.device)
         self.image_dim = 128
         self.instr_dim = 128
         self.use_widi_lstm = False
@@ -69,6 +68,7 @@ class Training:
             self.model_type = "transformerEncoder"
         if self.rudder.transfo_upgrade:
             self.model_type = "transformerEncoder_UP"
+        print("using ", self.device,self.model_type)
 
     # def train_and_set_metrics(self, episode):
     #     # loss, returnn, quality = self.train_one_episode(episode)
