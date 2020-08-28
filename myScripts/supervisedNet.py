@@ -5,6 +5,7 @@ from torch.nn import LSTMCell
 
 from widis_lstm_tools.nn import LSTMLayer
 
+
 def initialize_parameters(m):
     classname = m.__class__.__name__
     if classname.find('Linear') != -1:
@@ -12,10 +13,12 @@ def initialize_parameters(m):
         m.weight.data *= 1 / torch.sqrt(m.weight.data.pow(2).sum(1, keepdim=True))
         if m.bias is not None:
             m.bias.data.fill_(0)
+
+
 class ExpertControllerFiLM(nn.Module):
-    def __init__(self, in_features, out_features, in_channels, imm_channels,nr):
+    def __init__(self, in_features, out_features, in_channels, imm_channels, nr):
         super().__init__()
-        self.nr =nr
+        self.nr = nr
         self.conv1 = nn.Conv2d(in_channels=in_channels, out_channels=imm_channels, kernel_size=(3, 3), padding=1)
         self.bn1 = nn.BatchNorm2d(imm_channels)
         self.conv2 = nn.Conv2d(in_channels=imm_channels, out_channels=out_features, kernel_size=(3, 3), padding=1)
@@ -34,14 +37,15 @@ class ExpertControllerFiLM(nn.Module):
         out = F.relu(out)
         return out
 
+
 class Net(nn.Module):
-    def __init__(self, image_dim,  instr_dim, ac_embed_dim, action_space,device,use_widi,
-                 action_only,use_transformer=False,use_gru=False,transfo_upgrade=False,use_unit_widi=False):
+    def __init__(self, image_dim, instr_dim, ac_embed_dim, action_space, device, use_widi,
+                 action_only, use_transformer=False, use_gru=False, transfo_upgrade=False, use_unit_widi=False):
         super(Net, self).__init__()
         self.action_space = action_space
         self.use_transformer = use_transformer
         self.transfo_upgraded = transfo_upgrade
-        self.device=device
+        self.device = device
         self.image_dim = image_dim
         self.instr_dim = instr_dim
         self.ac_embed_dim = ac_embed_dim
@@ -54,13 +58,13 @@ class Net(nn.Module):
         # embed only
         self.action_only = action_only
         if self.action_only:
-            self.combined_input_dim = action_space + ac_embed_dim *1# +1+1 #1 time 1 value
+            self.combined_input_dim = action_space + ac_embed_dim * 1  # +1+1 #1 time 1 value
         else:
             # self.combined_input_dim = action_space + image_dim +ac_embed_dim  +1+1 #1 time 1 value
             # self.combined_input_dim = action_space + image_dim + 1   # 1 time 1 value
             self.combined_input_dim = action_space + image_dim  # without approx time
         self.rudder_lstm_out = 128
-        self.max_timesteps=128
+        self.max_timesteps = 128
         self.embedding_reducer = nn.Linear(ac_embed_dim, self.compressed_embedding)
         self.film_pool = nn.MaxPool2d(kernel_size=(2, 2), stride=2)
         self.linear_out = nn.Linear(self.rudder_lstm_out, 1)
@@ -77,12 +81,12 @@ class Net(nn.Module):
             if ni < num_module - 1:
                 mod = ExpertControllerFiLM(
                     in_features=self.instr_dim,
-                    out_features=128, in_channels=128, imm_channels=128,nr=ni)
+                    out_features=128, in_channels=128, imm_channels=128, nr=ni)
             else:
-                #output controller
+                # output controller
                 mod = ExpertControllerFiLM(
                     in_features=self.instr_dim, out_features=self.image_dim,
-                    in_channels=128, imm_channels=128,nr=ni)
+                    in_channels=128, imm_channels=128, nr=ni)
             self.controllers.append(mod.to(self.device))
 
         if self.transfo_upgraded:
@@ -117,10 +121,7 @@ class Net(nn.Module):
         )
         self.droput = nn.Dropout(p=0.25)
 
-        def lambda_replace_func(x):
-            return x
-
-        self.lambda_replace = lambda_replace_func
+        self.lambda_replace = self.lambda_replace_func
 
         if self.use_widi_lstm:
             self.lstm = LSTMLayer(
@@ -146,6 +147,8 @@ class Net(nn.Module):
             else:
                 self.lstm = nn.LSTM(self.combined_input_dim, self.rudder_lstm_out, batch_first=True)
 
+    def lambda_replace_func(self, x):
+        return x
 
     def extract_process_data(self, dic):
         try:
@@ -161,7 +164,7 @@ class Net(nn.Module):
             embedding = dic.embeddings
             value = dic.values
 
-        return image, instruction, action, embedding,value
+        return image, instruction, action, embedding, value
 
     # def extract_dict_values(self, dic):
     #     try:
@@ -184,7 +187,7 @@ class Net(nn.Module):
         #     image, instruction, action, embedding = self.extract_dict_values(dic)
         image, instruction, action, embedding, value = self.extract_process_data(dic)
         if batch:
-            embedding=embedding.to(self.device)
+            embedding = embedding.to(self.device)
             instruction = instruction.to(self.device)
             image = image.to(self.device)
             value = value.to(self.device)
@@ -195,16 +198,16 @@ class Net(nn.Module):
             for controler in self.controllers:
                 x = controler(x, instruction)
             x = F.relu(self.film_pool(x))
-            x=x.squeeze(2).squeeze(2)
+            x = x.squeeze(2).squeeze(2)
             action = torch.nn.functional.one_hot(action, num_classes=self.action_space).float().to(self.device)
             # x = torch.cat([image, instruction, action, embedding], dim=-1).unsqueeze(0)
-            #embedding only
+            # embedding only
             # approx_time = torch.ones((x.shape[0],1)) * x.shape[0]
 
             # approx_time = torch.linspace(0,1,self.max_timesteps,device=self.device)[:x.shape[0]].unsqueeze(1)
 
             if self.action_only:
-                x = torch.cat([x,action], dim=-1).unsqueeze(0)
+                x = torch.cat([x, action], dim=-1).unsqueeze(0)
             else:
                 # x = torch.cat([x,action,embedding,approx_time,value.unsqueeze(1)], dim=-1).unsqueeze(0)
                 x = torch.cat([x, action], dim=-1).unsqueeze(0)
@@ -246,18 +249,16 @@ class Net(nn.Module):
                 x, hidden = self.lstm(x, return_all_seq_pos=True)
             else:
                 x, hidden = self.lstm(x)
-            plus_ten=self.linear_out_plus_ten(x.squeeze(1))
+            plus_ten = self.linear_out_plus_ten(x.squeeze(1))
             # x = self.droput(x)
             # x=self.relu(x)
             x = self.linear_out(x.squeeze(1))
             # if batch:
             #     x = x.squeeze(2)
 
-
             # 1 timestep samples are 2d
             if not x.ndim == 3:
                 x = x.unsqueeze(0)
                 plus_ten = plus_ten.unsqueeze(0)
 
-
-            return x, hidden,plus_ten
+            return x, hidden, plus_ten

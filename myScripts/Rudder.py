@@ -154,8 +154,8 @@ class Rudder:
         continuous_loss = torch.mean((predictions[:, :] - returns[..., None]) ** 2)
         self.store_predictions_for_plotting(predictions)
         # continuous_loss = self.mse_loss(predictions[:, :], returns[..., None])
-        # if main_loss<=0.001 and returns>0:
-        #     print("low main loss, return",returns.item())
+        # if main_loss>=3.7:
+            # print("high main loss, return",returns.item())
         # loss Le of the prediction of the output at t+10 at each time step t
         le10_loss = 0.0
         # if episode is smaller than 10 the follwoing would produce a NAN

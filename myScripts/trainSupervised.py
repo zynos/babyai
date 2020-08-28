@@ -21,8 +21,10 @@ import matplotlib.image as mpimg
 import datetime
 from pathlib import Path
 
+# torch.backends.cudnn.deterministic = True
 # _ = torch.manual_seed(123)
 # random.seed(1234)
+# torch.backends.cudnn.benchmark = False
 
 
 class Training:
@@ -45,14 +47,15 @@ class Training:
         self.rudder.use_transformer = use_transformer
         self.rudder.transfo_upgrade = False
         self.rudder.aux_loss_multiplier = 0.5
-        assert sum([self.use_widi_uninit,self.use_widi_lstm, self.use_gru, self.rudder.use_transformer]) <= 1
+        assert sum([self.use_widi_uninit, self.use_widi_lstm, self.use_gru, self.rudder.use_transformer]) <= 1
 
         self.rudder.device = self.device
         self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128, action_space=7,
                               device=self.device,
                               use_widi=self.use_widi_lstm, action_only=self.action_only,
                               use_transformer=self.rudder.use_transformer, use_gru=self.use_gru,
-                              transfo_upgrade=self.rudder.transfo_upgrade,use_unit_widi=self.use_widi_uninit).to(self.device)
+                              transfo_upgrade=self.rudder.transfo_upgrade, use_unit_widi=self.use_widi_uninit).to(
+            self.device)
         self.rudder.mu = 1
         self.rudder.quality_threshold = 0.8
         self.rudder.clip_value = 0.5
@@ -71,7 +74,7 @@ class Training:
             self.model_type = "transformerEncoder_UP"
         if self.use_widi_uninit:
             self.model_type = "widi_unInit"
-        print("using ", self.device,self.model_type)
+        print("using, epochs", self.device, self.model_type,self.epochs)
 
     # def train_and_set_metrics(self, episode):
     #     # loss, returnn, quality = self.train_one_episode(episode)
@@ -220,7 +223,7 @@ class Training:
         return rewards
 
     def train_file_based(self, path_start, generated_demos=True):
-        self.calc_and_set_mean_and_stddev_from_episode_lens(path_start+"train/")
+        self.calc_and_set_mean_and_stddev_from_episode_lens(path_start + "train/")
         train_losses = []
         test_losses = []
         returns = []
@@ -243,7 +246,7 @@ class Training:
             test_losses.append([sum(y) / len(y) for y in zip(*batch_losses)])
             # test_losses.extend(batch_losses)
 
-        torch.save(self.rudder.net.state_dict(), self.model_type + "_model.pt")
+        torch.save(self.rudder.net, self.model_type + "_model.pt")
         self.plot(returns, train_losses, test_losses)
         self.rudder.plot_maximimum_prediction(self.model_type)
         self.rudder.plot_reduced_loss(self.model_type)
@@ -262,7 +265,7 @@ class Training:
         ax.plot(redistributed_rews, label="redistributed rewards " + str(label))
         ax.set_xticks(list(range(len(actions))))
         ax.set_xticklabels(actions, rotation=90)
-        ax.legend(loc="upper right")
+        ax.legend(loc="upper left")
         ax.stem([i], [redistributed_rews[i]], linefmt="r--", markerfmt="r")
         ax.get_xticklabels()[i].set_color("red")
         return actions[i]
@@ -275,7 +278,7 @@ class Training:
         if "unInit" in file_name:
             self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128,
                                   action_space=7, device=self.device,
-                                  use_widi=False, action_only=self.action_only,use_unit_widi=True).to(self.device)
+                                  use_widi=False, action_only=self.action_only, use_unit_widi=True).to(self.device)
 
         elif "widi" in file_name and "unInit" not in file_name:
             self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128,
@@ -294,7 +297,7 @@ class Training:
                                       action_space=7, device=self.device,
                                       use_widi=False, action_only=self.action_only, transfo_upgrade=True).to(
                     self.device)
-        self.rudder.net.load_state_dict(torch.load(path + file_name))
+        self.rudder.net = torch.load(path + file_name)
 
     def get_predictions_from_different_models(self, model_path, short_episode):
         # path = "256Img/"
@@ -303,7 +306,11 @@ class Training:
         ret = []
         for model_file_name in files:
             print(model_file_name)
+            self.rudder.net.eval()
             self.load_correct_network_parameters(path, model_file_name)
+            self.rudder.net.eval()
+            self.rudder.net.controllers[0].eval()
+            self.rudder.net.controllers[1].eval()
             with torch.no_grad():
                 loss, returns, quality, predictions, (main_loss, aux_loss) = self.rudder.feed_network(short_episode)
             # tmp = torch.zeros_like(predictions)
@@ -334,8 +341,10 @@ class Training:
             r = env.get_obs_render(image.cpu().numpy(), 128)
             # predictions = predictions.squeeze()
             plot_orig = True
+            if top_titel:
+                print("expect", top_titel)
             for el in model_predictions:
-                print("loss, main, aux", el[2])
+                print("loss, main, aux", el[2], el[1])
                 action = self.plot_reward_redistribution(short_episode.rewards, el[0], short_episode.actions,
                                                          axarr[0], i, el[1], plot_orig)
                 plot_orig = False
@@ -390,16 +399,21 @@ class Training:
         ret.append(episode)
         return ret
 
-    def visualize_low_and_high_loss_episodes(self, path_to_train_episodes,path_start, model_path, amount):
+    def build_loss_str(self, e):
+        return "loss {:.4f} main {:.4f} aux {:.4f} lastPred {:.3} {} ".format(float(e[2]), float(e[3]),
+                                                                              float(e[4]), float(e[0][-1]),
+                                                                              e[1])
+
+    def visualize_low_and_high_loss_episodes(self, path_to_train_episodes, path_start, model_path, amount, model_name):
         self.calc_and_set_mean_and_stddev_from_episode_lens(path_to_train_episodes)
 
-        low_loss, high_loss = self.get_low_and_high_loss_episode(model_path, amount)
+        low_loss, high_loss = self.get_low_and_high_loss_episode(model_path, amount, model_name)
         env = gym.make("BabyAI-PutNextLocal-v0")
         for e in high_loss:
-            loss_str = "loss {:.4f} main {:.4f} aux {:.4f}".format(float(e[2]), float(e[3]), float(e[4]))
+            loss_str = self.build_loss_str(e)
             self.evaluate_one_episode("high", "loss", path_start, model_path, e[-1], env, loss_str)
         for e in low_loss:
-            loss_str = "loss {:.4f} main {:.4f} aux {:.4f}".format(float(e[2]), float(e[3]), float(e[4]))
+            loss_str = self.build_loss_str(e)
             self.evaluate_one_episode("low", "loss", path_start, model_path, e[-1], env, loss_str)
 
     def visualize_failed_episode_in_parts(self, start, stop, path_start, model_path):
@@ -413,16 +427,18 @@ class Training:
             new_stop = len(e.dones)
             self.evaluate_one_episode(new_start, new_stop, path_start, model_path, e, env)
 
-    def get_low_and_high_loss_episode(self, model_path, amount):
+    def get_low_and_high_loss_episode(self, model_path, amount, model_name):
         episodes = read_pkl_files(True, "../scripts/demos/train/")
         episode_data = []
         for ep in episodes:
-            model_results = self.get_predictions_from_different_models(model_path,
-                                                                       ep)
+            model_results = self.get_predictions_from_different_models(model_path, ep)
             for tup in model_results:
                 predictions, file_name, (loss, main_loss, aux_loss) = tup
-                episode_data.append([predictions, file_name, loss, main_loss, aux_loss, ep])
-                print("loss, len", loss.item(), len(predictions))
+                if model_name in file_name:
+                    episode_data.append([predictions, file_name, loss, main_loss, aux_loss, ep])
+                    print("loss, len", loss.item(), len(predictions))
+                    if loss.item() > 5:
+                        print("susp")
         episode_data.sort(key=lambda x: x[2])
         return episode_data[:amount], episode_data[-amount:]
 
@@ -695,7 +711,7 @@ def create_episode_len_histogram(path):
 # sys.settrace
 training = Training()
 # training.visualize_low_and_high_loss_episodes("../scripts/demos/train/"
-#                                               ,"lossVisualizedMinus1Plus1LSTMandGRUWidi/","models/",6)
+#                                               , "lossVisualizedMinus1Plus1FocusGRU/", "models/", 6, "GRU")
 # training.visualize_failed_episode_in_parts(127, 129, "failedVisualized1Million0.5Aux1e-6LRNoAuxTime/",
 #                                            "1Million0.5Aux1e-6LRNoAuxTime/", )
 # training.calc_rew_of_generated_episodes("../scripts/demos/train/")
