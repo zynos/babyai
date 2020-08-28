@@ -1,3 +1,4 @@
+import gc
 import os
 import pickle
 import re
@@ -62,7 +63,7 @@ class Training:
         self.lr = 1e-4
         self.weight_dec = 1e-6
         self.rudder.optimizer = torch.optim.Adam(self.rudder.net.parameters(), lr=self.lr, weight_decay=self.weight_dec)
-        self.epochs = 3
+        self.epochs = 7
         self.model_type = "stdLSTm"
         if self.use_widi_lstm:
             self.model_type = "widiLSTM"
@@ -272,32 +273,36 @@ class Training:
         # plt.show()
 
     def load_correct_network_parameters(self, path, file_name):
-        self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128,
-                              action_space=7, device=self.device,
-                              use_widi=False, action_only=self.action_only).to(self.device)
-        if "unInit" in file_name:
-            self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128,
-                                  action_space=7, device=self.device,
-                                  use_widi=False, action_only=self.action_only, use_unit_widi=True).to(self.device)
-
-        elif "widi" in file_name and "unInit" not in file_name:
-            self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128,
-                                  action_space=7, device=self.device,
-                                  use_widi=True, action_only=self.action_only).to(self.device)
-
-        elif "GRU" in file_name:
-            self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128,
-                                  action_space=7, device=self.device,
-                                  use_widi=False, use_gru=True, action_only=self.action_only).to(self.device)
-
-        elif "trans" in file_name:
-            self.rudder.net.use_transformer = True
-            if "UP" in file_name:
-                self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128,
-                                      action_space=7, device=self.device,
-                                      use_widi=False, action_only=self.action_only, transfo_upgrade=True).to(
-                    self.device)
+        # self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128,
+        #                       action_space=7, device=self.device,
+        #                       use_widi=False, action_only=self.action_only).to(self.device)
+        # if "unInit" in file_name:
+        #     self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128,
+        #                           action_space=7, device=self.device,
+        #                           use_widi=False, action_only=self.action_only, use_unit_widi=True).to(self.device)
+        #
+        # elif "widi" in file_name and "unInit" not in file_name:
+        #     self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128,
+        #                           action_space=7, device=self.device,
+        #                           use_widi=True, action_only=self.action_only).to(self.device)
+        #
+        # elif "GRU" in file_name:
+        #     self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128,
+        #                           action_space=7, device=self.device,
+        #                           use_widi=False, use_gru=True, action_only=self.action_only).to(self.device)
+        #
+        # elif "trans" in file_name:
+        #     self.rudder.net.use_transformer = True
+        #     if "UP" in file_name:
+        #         self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128,
+        #                               action_space=7, device=self.device,
+        #                               use_widi=False, action_only=self.action_only, transfo_upgrade=True).to(
+        #             self.device)
+        del self.rudder.net
+        torch.cuda.empty_cache()
+        gc.collect()
         self.rudder.net = torch.load(path + file_name)
+        self.rudder.net.eval()
 
     def get_predictions_from_different_models(self, model_path, short_episode):
         # path = "256Img/"
@@ -306,11 +311,11 @@ class Training:
         ret = []
         for model_file_name in files:
             print(model_file_name)
-            self.rudder.net.eval()
+            # self.rudder.net.eval()
             self.load_correct_network_parameters(path, model_file_name)
-            self.rudder.net.eval()
-            self.rudder.net.controllers[0].eval()
-            self.rudder.net.controllers[1].eval()
+            # self.rudder.net.eval()
+            # self.rudder.net.controllers[0].eval()
+            # self.rudder.net.controllers[1].eval()
             with torch.no_grad():
                 loss, returns, quality, predictions, (main_loss, aux_loss) = self.rudder.feed_network(short_episode)
             # tmp = torch.zeros_like(predictions)
@@ -710,13 +715,13 @@ def create_episode_len_histogram(path):
 # env = gym.make("BabyAI-PutNextLocal-v0")
 # sys.settrace
 training = Training()
-# training.visualize_low_and_high_loss_episodes("../scripts/demos/train/"
-#                                               , "lossVisualizedMinus1Plus1FocusGRU/", "models/", 6, "GRU")
+training.visualize_low_and_high_loss_episodes("../scripts/demos/train/"
+                                              , "GRU7LSTM7EpisodesOnly/", "models/", 6, "GRU")
 # training.visualize_failed_episode_in_parts(127, 129, "failedVisualized1Million0.5Aux1e-6LRNoAuxTime/",
 #                                            "1Million0.5Aux1e-6LRNoAuxTime/", )
 # training.calc_rew_of_generated_episodes("../scripts/demos/train/")
 # do_multiple_evaluations("models/1Million0.5Aux1e-5LRNoAuxTime/", "EVAL_GRU_1Million0.5Aux1e-5LRNoAuxTime/")
-training.train_file_based("../scripts/demos/")
+# training.train_file_based("../scripts/demos/")
 # find_unique_episodes("../scripts/replays7/")
 # calc_memory_saving_ret_mean("../scripts/demos/train/")
 # my_path = "testi/"

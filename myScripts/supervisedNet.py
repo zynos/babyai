@@ -88,6 +88,7 @@ class Net(nn.Module):
                     in_features=self.instr_dim, out_features=self.image_dim,
                     in_channels=128, imm_channels=128, nr=ni)
             self.controllers.append(mod.to(self.device))
+            self.add_module('FiLM_Controler_' + str(ni), mod)
 
         if self.transfo_upgraded:
             encoder_layer = nn.TransformerEncoderLayer(d_model=self.combined_input_dim, nhead=8)
