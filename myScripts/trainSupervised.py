@@ -41,8 +41,8 @@ class Training:
         self.device = "cuda"
         self.image_dim = 128
         self.instr_dim = 128
-        self.use_widi_lstm = True
-        self.use_widi_uninit = False
+        self.use_widi_lstm = False
+        self.use_widi_uninit = Training
         self.use_gru = False
         self.action_only = False
         self.rudder.use_transformer = use_transformer
@@ -445,8 +445,6 @@ class Training:
                 if model_name in file_name:
                     episode_data.append([predictions, file_name, loss, main_loss, aux_loss, ep])
                     print("loss, len", loss.item(), len(predictions))
-                    if loss.item() > 5:
-                        print("susp")
         episode_data.sort(key=lambda x: x[2])
         return episode_data[:amount], episode_data[-amount:]
 
@@ -719,12 +717,12 @@ def create_episode_len_histogram(path):
 # sys.settrace
 training = Training()
 # training.visualize_low_and_high_loss_episodes("../scripts/demos/42DS/train/", "../scripts/demos/42DS/validate/"
-#                                               , "GRU3LSTM3EpochsOnly1MDS/", "models/", 6, "GRU")
+#                                               , "42epsTryOut/", "models/", 6, "unInit")
 # training.visualize_failed_episode_in_parts(127, 129, "failedVisualized1Million0.5Aux1e-6LRNoAuxTime/",
 #                                            "1Million0.5Aux1e-6LRNoAuxTime/", )
 # training.calc_rew_of_generated_episodes("../scripts/demos/train/")
 # do_multiple_evaluations("models/1Million0.5Aux1e-5LRNoAuxTime/", "EVAL_GRU_1Million0.5Aux1e-5LRNoAuxTime/")
-training.train_file_based("../scripts/demos/42DS/")
+training.train_file_based("../scripts/demos/")
 # find_unique_episodes("../scripts/replays7/")
 # calc_memory_saving_ret_mean("../scripts/demos/train/")
 # my_path = "testi/"
