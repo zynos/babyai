@@ -21,9 +21,8 @@ class Rudder:
         self.aux_losses = []
         self.mean_predictions = []
         self.min_predictions = []
-        self.max_predictions=[]
+        self.max_predictions = []
         self.train_timesteps = False
-
 
     # def __init__(self, mem_dim, nr_procs, obs_space, instr_dim, ac_embed_dim, image_dim, action_space, device):
     #     self.nr_procs = nr_procs
@@ -67,7 +66,7 @@ class Rudder:
         quality = 1 - (np.abs(diff.item()) / self.mu) * 1 / (1 - self.quality_threshold)
         return quality
 
-    def plot_grad_flow(self,named_parameters):
+    def plot_grad_flow(self, named_parameters):
         '''Plots the gradients flowing through different layers in the net during training.
         Can be used for checking for possible gradient vanishing / exploding problems.
 
@@ -98,11 +97,11 @@ class Rudder:
         plt.close()
         # plt.show()
 
-    def plot_maximimum_prediction(self,model_name):
-        plt.title("predicted reward "+model_name)
-        plt.plot(self.max_predictions,"bo", label="maximum")
-        plt.plot(self.mean_predictions,"go", label="mean",alpha=0.8)
-        plt.plot(self.min_predictions,"ro", label="minimum")
+    def plot_maximimum_prediction(self, model_name):
+        plt.title("predicted reward " + model_name)
+        plt.plot(self.max_predictions, "bo", label="maximum")
+        plt.plot(self.mean_predictions, "go", label="mean", alpha=0.8)
+        plt.plot(self.min_predictions, "ro", label="minimum")
         plt.legend(loc="upper left")
         figure = plt.gcf()  # get current figure
         figure.set_size_inches(19.2, 10.8)
@@ -110,12 +109,16 @@ class Rudder:
         # plt.show()
         plt.close()
 
-    def plot_reduced_loss(self,model_name,reduce_by=100):
+    def plot_reduced_loss(self, model_name, reduce_by=100):
+
+        if len(self.main_losses) % reduce_by != 0:
+            reduce_by /= 10
+            reduce_by=int(reduce_by)
         reduced_main_l = np.mean(np.array(self.main_losses).reshape(-1, reduce_by), axis=1)
         reduced_aux_l = np.mean(np.array(self.aux_losses).reshape(-1, reduce_by), axis=1)
-        plt.title("averaged losses by "+str(reduce_by)+" of" + model_name)
+        plt.title("averaged losses by " + str(reduce_by) + " of" + model_name)
         plt.yscale("log")
-        plt.plot(reduced_main_l,  label="main loss")
+        plt.plot(reduced_main_l, label="main loss")
         plt.plot(reduced_aux_l, label="aux loss")
         plt.legend(loc="upper left")
         figure = plt.gcf()  # get current figure
@@ -124,29 +127,28 @@ class Rudder:
         # plt.show()
         plt.close()
 
-    def scale_rewards_minus_one_to_1(self,rewards):
-        rewards = (rewards-self.mean)/self.std_dev
+    def scale_rewards_minus_one_to_1(self, rewards):
+        rewards = (rewards - self.mean) / self.std_dev
         return rewards
 
-    def scale_rewards(self,rewards,minus_to_one_scale=False):
+    def scale_rewards(self, rewards, minus_to_one_scale=False):
         if minus_to_one_scale:
             rewards = self.scale_rewards_minus_one_to_1(rewards)
         else:
             rewards *= self.reward_scale
         return rewards
 
-    def store_predictions_for_plotting(self,predictions):
+    def store_predictions_for_plotting(self, predictions):
         self.max_predictions.append(torch.max(predictions).item())
         self.min_predictions.append(torch.min(predictions).item())
         self.mean_predictions.append(torch.mean(predictions).item())
 
-    def store_losses_for_plotting(self,main_loss,aux_loss):
+    def store_losses_for_plotting(self, main_loss, aux_loss):
         self.main_losses.append(main_loss)
         self.aux_losses.append(aux_loss)
 
-
     def paper_loss3(self, predictions, returns, pred_plus_ten_ts):
-        returns=self.scale_rewards(returns,self.minus_to_one_scale)
+        returns = self.scale_rewards(returns, self.minus_to_one_scale)
         diff = predictions[:, -1] - returns
         # Main task: predicting return at last timestep
         quality = self.calc_quality(diff)
@@ -156,7 +158,7 @@ class Rudder:
         self.store_predictions_for_plotting(predictions)
         # continuous_loss = self.mse_loss(predictions[:, :], returns[..., None])
         # if main_loss>=3.7:
-            # print("high main loss, return",returns.item())
+        # print("high main loss, return",returns.item())
         # loss Le of the prediction of the output at t+10 at each time step t
         le10_loss = 0.0
         # if episode is smaller than 10 the follwoing would produce a NAN
@@ -170,12 +172,11 @@ class Rudder:
         aux_loss = continuous_loss + le10_loss
         loss = main_loss + self.aux_loss_multiplier * aux_loss
 
-
         main_l_copy = main_loss.detach().clone().item()
-        aux_l_copy =  aux_loss.detach().clone().item()
-        self.store_losses_for_plotting(main_l_copy,aux_l_copy)
+        aux_l_copy = aux_loss.detach().clone().item()
+        self.store_losses_for_plotting(main_l_copy, aux_l_copy)
 
-        return loss, quality, (main_l_copy,aux_l_copy)
+        return loss, quality, (main_l_copy, aux_l_copy)
 
         # def lossfunction(self, predictions, returns):
 

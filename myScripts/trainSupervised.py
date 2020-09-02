@@ -41,9 +41,9 @@ class Training:
         self.device = "cuda"
         self.image_dim = 128
         self.instr_dim = 128
-        self.use_widi_lstm = False
+        self.use_widi_lstm = True
         self.use_widi_uninit = False
-        self.use_gru = True
+        self.use_gru = False
         self.action_only = False
         self.rudder.use_transformer = use_transformer
         self.rudder.transfo_upgrade = False
@@ -63,7 +63,7 @@ class Training:
         self.lr = 1e-4
         self.weight_dec = 1e-6
         self.rudder.optimizer = torch.optim.Adam(self.rudder.net.parameters(), lr=self.lr, weight_decay=self.weight_dec)
-        self.epochs = 3
+        self.epochs = 10
         self.model_type = "stdLSTm"
         if self.use_widi_lstm:
             self.model_type = "widiLSTM"
@@ -247,7 +247,7 @@ class Training:
             test_losses.append([sum(y) / len(y) for y in zip(*batch_losses)])
             # test_losses.extend(batch_losses)
 
-        torch.save(self.rudder.net, self.model_type + "_model.pt")
+        torch.save(self.rudder.net.state_dict(), self.model_type + "_model.pt")
         self.plot(returns, train_losses, test_losses)
         self.rudder.plot_maximimum_prediction(self.model_type)
         self.rudder.plot_reduced_loss(self.model_type)
@@ -273,35 +273,38 @@ class Training:
         # plt.show()
 
     def load_correct_network_parameters(self, path, file_name):
-        # self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128,
-        #                       action_space=7, device=self.device,
-        #                       use_widi=False, action_only=self.action_only).to(self.device)
-        # if "unInit" in file_name:
-        #     self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128,
-        #                           action_space=7, device=self.device,
-        #                           use_widi=False, action_only=self.action_only, use_unit_widi=True).to(self.device)
-        #
-        # elif "widi" in file_name and "unInit" not in file_name:
-        #     self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128,
-        #                           action_space=7, device=self.device,
-        #                           use_widi=True, action_only=self.action_only).to(self.device)
-        #
-        # elif "GRU" in file_name:
-        #     self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128,
-        #                           action_space=7, device=self.device,
-        #                           use_widi=False, use_gru=True, action_only=self.action_only).to(self.device)
-        #
-        # elif "trans" in file_name:
-        #     self.rudder.net.use_transformer = True
-        #     if "UP" in file_name:
-        #         self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128,
-        #                               action_space=7, device=self.device,
-        #                               use_widi=False, action_only=self.action_only, transfo_upgrade=True).to(
-        #             self.device)
         del self.rudder.net
-        torch.cuda.empty_cache()
         gc.collect()
-        self.rudder.net = torch.load(path + file_name)
+        torch.cuda.empty_cache()
+        self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128,
+                              action_space=7, device=self.device,
+                              use_widi=False, action_only=self.action_only).to(self.device)
+        if "unInit" in file_name:
+            self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128,
+                                  action_space=7, device=self.device,
+                                  use_widi=False, action_only=self.action_only, use_unit_widi=True).to(self.device)
+
+        elif "widi" in file_name and "unInit" not in file_name:
+            self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128,
+                                  action_space=7, device=self.device,
+                                  use_widi=True, action_only=self.action_only).to(self.device)
+
+        elif "GRU" in file_name:
+            self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128,
+                                  action_space=7, device=self.device,
+                                  use_widi=False, use_gru=True, action_only=self.action_only).to(self.device)
+
+        elif "trans" in file_name:
+            self.rudder.net.use_transformer = True
+            if "UP" in file_name:
+                self.rudder.net = Net(image_dim=self.image_dim, instr_dim=self.instr_dim, ac_embed_dim=128,
+                                      action_space=7, device=self.device,
+                                      use_widi=False, action_only=self.action_only, transfo_upgrade=True).to(
+                    self.device)
+
+
+        # self.rudder.net = torch.load(path + file_name)
+        self.rudder.net.load_state_dict(torch.load(path + file_name))
         self.rudder.net.eval()
 
     def get_predictions_from_different_models(self, model_path, short_episode):
@@ -409,10 +412,10 @@ class Training:
                                                                               float(e[4]), float(e[0][-1]),
                                                                               e[1])
 
-    def visualize_low_and_high_loss_episodes(self, path_to_train_episodes, path_start, model_path, amount, model_name):
+    def visualize_low_and_high_loss_episodes(self, path_to_train_episodes,path_to_valid_episodes, path_start, model_path, amount, model_name):
         self.calc_and_set_mean_and_stddev_from_episode_lens(path_to_train_episodes)
 
-        low_loss, high_loss = self.get_low_and_high_loss_episode(model_path, amount, model_name)
+        low_loss, high_loss = self.get_low_and_high_loss_episode(model_path, amount, model_name,path_to_valid_episodes)
         env = gym.make("BabyAI-PutNextLocal-v0")
         for e in high_loss:
             loss_str = self.build_loss_str(e)
@@ -432,8 +435,8 @@ class Training:
             new_stop = len(e.dones)
             self.evaluate_one_episode(new_start, new_stop, path_start, model_path, e, env)
 
-    def get_low_and_high_loss_episode(self, model_path, amount, model_name):
-        episodes = read_pkl_files(True, "../scripts/demos/1mDS/train/")
+    def get_low_and_high_loss_episode(self, model_path, amount, model_name,path_to_valid_episodes):
+        episodes = read_pkl_files(True, path_to_valid_episodes)
         episode_data = []
         for ep in episodes:
             model_results = self.get_predictions_from_different_models(model_path, ep)
@@ -715,13 +718,13 @@ def create_episode_len_histogram(path):
 # env = gym.make("BabyAI-PutNextLocal-v0")
 # sys.settrace
 training = Training()
-training.visualize_low_and_high_loss_episodes("../scripts/demos/1mDS/validate/"
-                                              , "GRU3LSTM3EpochsOnly1MDS/", "models/minus1Plus1and1MillDS/", 6, "GRU")
+# training.visualize_low_and_high_loss_episodes("../scripts/demos/42DS/train/", "../scripts/demos/42DS/validate/"
+#                                               , "GRU3LSTM3EpochsOnly1MDS/", "models/", 6, "GRU")
 # training.visualize_failed_episode_in_parts(127, 129, "failedVisualized1Million0.5Aux1e-6LRNoAuxTime/",
 #                                            "1Million0.5Aux1e-6LRNoAuxTime/", )
 # training.calc_rew_of_generated_episodes("../scripts/demos/train/")
 # do_multiple_evaluations("models/1Million0.5Aux1e-5LRNoAuxTime/", "EVAL_GRU_1Million0.5Aux1e-5LRNoAuxTime/")
-# training.train_file_based("../scripts/demos/1mDS/")
+training.train_file_based("../scripts/demos/42DS/")
 # find_unique_episodes("../scripts/replays7/")
 # calc_memory_saving_ret_mean("../scripts/demos/train/")
 # my_path = "testi/"
