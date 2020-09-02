@@ -138,15 +138,14 @@ class Net(nn.Module):
                 # LSTM output activation is set to identity function
                 a_out=self.lambda_replace
             )
-        if self.use_uninit_widi:
+        elif self.use_uninit_widi:
             self.lstm = LSTMLayer(
                 in_features=self.combined_input_dim, out_features=self.rudder_lstm_out, inputformat='NLC')
 
+        elif self.use_gru:
+            self.lstm = nn.GRU(self.combined_input_dim, self.rudder_lstm_out, batch_first=True)
         else:
-            if self.use_gru:
-                self.lstm = nn.GRU(self.combined_input_dim, self.rudder_lstm_out, batch_first=True)
-            else:
-                self.lstm = nn.LSTM(self.combined_input_dim, self.rudder_lstm_out, batch_first=True)
+            self.lstm = nn.LSTM(self.combined_input_dim, self.rudder_lstm_out, batch_first=True)
 
     def lambda_replace_func(self, x):
         return x

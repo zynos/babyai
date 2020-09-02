@@ -41,9 +41,9 @@ class Training:
         self.device = "cuda"
         self.image_dim = 128
         self.instr_dim = 128
-        self.use_widi_lstm = False
+        self.use_widi_lstm = True
         self.use_widi_uninit = False
-        self.use_gru = True
+        self.use_gru = False
         self.action_only = False
         self.rudder.use_transformer = use_transformer
         self.rudder.transfo_upgrade = False
@@ -715,13 +715,13 @@ def create_episode_len_histogram(path):
 # env = gym.make("BabyAI-PutNextLocal-v0")
 # sys.settrace
 training = Training()
-training.visualize_low_and_high_loss_episodes("../scripts/demos/1mDS/validate/"
-                                              , "GRU3LSTM3EpochsOnly1MDS/", "models/minus1Plus1and1MillDS/", 6, "GRU")
+# training.visualize_low_and_high_loss_episodes("../scripts/demos/1mDS/validate/"
+#                                               , "GRU3LSTM3EpochsOnly1MDS/", "models/minus1Plus1and1MillDS/", 6, "GRU")
 # training.visualize_failed_episode_in_parts(127, 129, "failedVisualized1Million0.5Aux1e-6LRNoAuxTime/",
 #                                            "1Million0.5Aux1e-6LRNoAuxTime/", )
 # training.calc_rew_of_generated_episodes("../scripts/demos/train/")
 # do_multiple_evaluations("models/1Million0.5Aux1e-5LRNoAuxTime/", "EVAL_GRU_1Million0.5Aux1e-5LRNoAuxTime/")
-# training.train_file_based("../scripts/demos/1mDS/")
+training.train_file_based("../scripts/demos/240kDS/")
 # find_unique_episodes("../scripts/replays7/")
 # calc_memory_saving_ret_mean("../scripts/demos/train/")
 # my_path = "testi/"
