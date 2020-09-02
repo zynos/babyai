@@ -43,7 +43,7 @@ class Training:
         self.instr_dim = 128
         self.use_widi_lstm = False
         self.use_widi_uninit = False
-        self.use_gru = False
+        self.use_gru = True
         self.action_only = False
         self.rudder.use_transformer = use_transformer
         self.rudder.transfo_upgrade = False
@@ -63,7 +63,7 @@ class Training:
         self.lr = 1e-4
         self.weight_dec = 1e-6
         self.rudder.optimizer = torch.optim.Adam(self.rudder.net.parameters(), lr=self.lr, weight_decay=self.weight_dec)
-        self.epochs = 7
+        self.epochs = 3
         self.model_type = "stdLSTm"
         if self.use_widi_lstm:
             self.model_type = "widiLSTM"
@@ -433,7 +433,7 @@ class Training:
             self.evaluate_one_episode(new_start, new_stop, path_start, model_path, e, env)
 
     def get_low_and_high_loss_episode(self, model_path, amount, model_name):
-        episodes = read_pkl_files(True, "../scripts/demos/train/")
+        episodes = read_pkl_files(True, "../scripts/demos/1mDS/train/")
         episode_data = []
         for ep in episodes:
             model_results = self.get_predictions_from_different_models(model_path, ep)
@@ -715,13 +715,13 @@ def create_episode_len_histogram(path):
 # env = gym.make("BabyAI-PutNextLocal-v0")
 # sys.settrace
 training = Training()
-training.visualize_low_and_high_loss_episodes("../scripts/demos/train/"
-                                              , "GRU7LSTM7EpisodesOnly/", "models/", 6, "GRU")
+training.visualize_low_and_high_loss_episodes("../scripts/demos/1mDS/validate/"
+                                              , "GRU3LSTM3EpochsOnly1MDS/", "models/minus1Plus1and1MillDS/", 6, "GRU")
 # training.visualize_failed_episode_in_parts(127, 129, "failedVisualized1Million0.5Aux1e-6LRNoAuxTime/",
 #                                            "1Million0.5Aux1e-6LRNoAuxTime/", )
 # training.calc_rew_of_generated_episodes("../scripts/demos/train/")
 # do_multiple_evaluations("models/1Million0.5Aux1e-5LRNoAuxTime/", "EVAL_GRU_1Million0.5Aux1e-5LRNoAuxTime/")
-# training.train_file_based("../scripts/demos/")
+# training.train_file_based("../scripts/demos/1mDS/")
 # find_unique_episodes("../scripts/replays7/")
 # calc_memory_saving_ret_mean("../scripts/demos/train/")
 # my_path = "testi/"
