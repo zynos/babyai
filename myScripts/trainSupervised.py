@@ -722,7 +722,7 @@ training = Training()
 #                                            "1Million0.5Aux1e-6LRNoAuxTime/", )
 # training.calc_rew_of_generated_episodes("../scripts/demos/train/")
 # do_multiple_evaluations("models/1Million0.5Aux1e-5LRNoAuxTime/", "EVAL_GRU_1Million0.5Aux1e-5LRNoAuxTime/")
-training.train_file_based("../scripts/demos/240kDS/")
+training.train_file_based("../scripts/demos/")
 # find_unique_episodes("../scripts/replays7/")
 # calc_memory_saving_ret_mean("../scripts/demos/train/")
 # my_path = "testi/"
