@@ -384,18 +384,18 @@ class Rudder:
         return loss, returns, quality, predictions.detach().clone(), raw_loss
 
     def inference_and_set_metrics(self, episode: ProcessData):
-        self.net.eval()
+        self.net.train()
         with torch.no_grad():
             # in train and set metrics rewards are a tensor
 
             # episode.rewards=torch.from_numpy(np.array(episode.rewards)).to(self.device)
-            try:
-                # print("episode.rewards",episode.rewards)
-                episode.rewards = torch.stack(episode.rewards)
-                # episode.values = torch.stack(episode.values)
-            except:
-                pass
-            assert isinstance(episode.rewards, torch.Tensor)
+            # try:
+            #     # print("episode.rewards",episode.rewards)
+            #     episode.rewards = torch.stack(episode.rewards)
+            #     # episode.values = torch.stack(episode.values)
+            # except:
+            #     pass
+            # assert isinstance(episode.rewards, torch.Tensor)
 
             loss, returns, quality, _, raw_loss = self.feed_network(episode)
             loss = loss.detach().item()

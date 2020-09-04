@@ -42,7 +42,7 @@ class Training:
         self.image_dim = 128
         self.instr_dim = 128
         self.use_widi_lstm = False
-        self.use_widi_uninit = True
+        self.use_widi_uninit = False
         self.use_gru = False
         self.action_only = False
         self.rudder.use_transformer = use_transformer
@@ -60,10 +60,10 @@ class Training:
         self.rudder.mu = 1
         self.rudder.quality_threshold = 0.8
         self.rudder.clip_value = 0.5
-        self.lr = 1e-4
+        self.lr = 1e-5
         self.weight_dec = 1e-6
         self.rudder.optimizer = torch.optim.Adam(self.rudder.net.parameters(), lr=self.lr, weight_decay=self.weight_dec)
-        self.epochs = 3
+        self.epochs = 4
         self.model_type = "stdLSTm"
         if self.use_widi_lstm:
             self.model_type = "widiLSTM"
@@ -305,7 +305,7 @@ class Training:
 
         # self.rudder.net = torch.load(path + file_name)
         self.rudder.net.load_state_dict(torch.load(path + file_name))
-        self.rudder.net.eval()
+        self.rudder.net.train()
 
     def get_predictions_from_different_models(self, model_path, short_episode):
         # path = "256Img/"
@@ -722,7 +722,7 @@ training = Training()
 #                                            "1Million0.5Aux1e-6LRNoAuxTime/", )
 # training.calc_rew_of_generated_episodes("../scripts/demos/train/")
 # do_multiple_evaluations("models/1Million0.5Aux1e-5LRNoAuxTime/", "EVAL_GRU_1Million0.5Aux1e-5LRNoAuxTime/")
-training.train_file_based("../scripts/demos/")
+training.train_file_based("../scripts/demos/240kDS/")
 # find_unique_episodes("../scripts/replays7/")
 # calc_memory_saving_ret_mean("../scripts/demos/train/")
 # my_path = "testi/"
