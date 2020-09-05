@@ -727,9 +727,9 @@ training = Training()
 #                                            "models/new/firstFixed/","../scripts/demos/240kDS/train/" ,
 #                                            "../scripts/demos/240kDS/validate/" )
 # training.calc_rew_of_generated_episodes("../scripts/demos/train/")
-do_multiple_evaluations("models/new/firstFixed/", "EVAL_GRU_240k/", "../scripts/demos/240kDS/train/",
-"../scripts/demos/240kDS/validate/")
-# training.train_file_based("../scripts/demos/")
+# do_multiple_evaluations("models/new/firstFixed/", "EVAL_GRU_240k/", "../scripts/demos/240kDS/train/",
+# "../scripts/demos/240kDS/validate/")
+training.train_file_based("../scripts/demos/240kDS/")
 # find_unique_episodes("../scripts/replays7/")
 # calc_memory_saving_ret_mean("../scripts/demos/train/")
 # my_path = "testi/"
