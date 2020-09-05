@@ -424,11 +424,14 @@ class Training:
             loss_str = self.build_loss_str(e)
             self.evaluate_one_episode("low", "loss", path_start, model_path, e[-1], env, loss_str)
 
-    def visualize_failed_episode_in_parts(self, start, stop, path_start, model_path):
+    def visualize_failed_episode_in_parts(self, start, stop, path_start, model_path,path_to_train_episodes,
+                                          path_to_valid_episodes):
+        self.calc_and_set_mean_and_stddev_from_episode_lens(path_to_train_episodes)
+
         print(start, stop)
         env = gym.make("BabyAI-PutNextLocal-v0")
         # self.rudder.net.load_state_dict(torch.load("MyModel.pt"))
-        short_episode = self.get_random_episode_from_range(start, stop)
+        short_episode = self.get_random_episode_from_range(start, stop,path_to_valid_episodes)
         episodes = self.create_partial_episodes_from_failed_episode(short_episode)
         new_start = 0
         for e in episodes:
@@ -448,8 +451,8 @@ class Training:
         episode_data.sort(key=lambda x: x[2])
         return episode_data[:amount], episode_data[-amount:]
 
-    def get_random_episode_from_range(self, start, stop):
-        episodes = read_pkl_files(True)
+    def get_random_episode_from_range(self, start, stop,path_to_valid_episodes=None):
+        episodes = read_pkl_files(True,path_to_valid_episodes)
         random.shuffle(episodes)
         short_episode = None
         fist = False
@@ -461,11 +464,11 @@ class Training:
         assert short_episode is not None
         return short_episode
 
-    def evaluate(self, start, stop, path_start, model_path):
+    def evaluate(self, start, stop, path_start, model_path,path_to_valid_episodes):
         print(start, stop)
         env = gym.make("BabyAI-PutNextLocal-v0")
         # self.rudder.net.load_state_dict(torch.load("MyModel.pt"))
-        short_episode = self.get_random_episode_from_range(start, stop)
+        short_episode = self.get_random_episode_from_range(start, stop,path_to_valid_episodes)
         self.evaluate_one_episode(start, stop, path_start, model_path, short_episode, env)
 
     def load_generated_demos(self, path, max_steps=128):
@@ -593,14 +596,16 @@ def get_return_mean(episodes):
     print("mean return", np.mean(rets))
 
 
-def do_multiple_evaluations(model_path, parent_folder):
+def do_multiple_evaluations(model_path, parent_folder,path_to_train_episodes,path_to_valid_episodes):
+    training.calc_and_set_mean_and_stddev_from_episode_lens(path_to_train_episodes)
+
     ranges = [(0, 12), (12, 20), (20, 40), (40, 60), (60, 128), (127, 129)]
     runs = 3
     for i in range(runs):
         path = parent_folder + "run" + str(i) + "/"
         # Path(path).mkdir(parents=True, exist_ok=True)
         for r in ranges:
-            training.evaluate(r[0], r[1], path, model_path)
+            training.evaluate(r[0], r[1], path, model_path,path_to_valid_episodes)
 
 
 def save_cleaned_episodes(wrote_files, duplicate_free):
@@ -716,12 +721,14 @@ def create_episode_len_histogram(path):
 # env = gym.make("BabyAI-PutNextLocal-v0")
 # sys.settrace
 training = Training()
-training.visualize_low_and_high_loss_episodes("../scripts/demos/240kDS/train/", "../scripts/demos/240kDS/validate/"
-                                              , "testingFreshGRU/", "models/new/firstFixed/", 6, "GRU")
-# training.visualize_failed_episode_in_parts(127, 129, "failedVisualized1Million0.5Aux1e-6LRNoAuxTime/",
-#                                            "1Million0.5Aux1e-6LRNoAuxTime/", )
+# training.visualize_low_and_high_loss_episodes("../scripts/demos/240kDS/train/", "../scripts/demos/240kDS/validate/"
+#                                               , "testingFreshGRU/", "models/new/firstFixed/", 6, "GRU")
+# training.visualize_failed_episode_in_parts(127, 129, "failedVisualized240KGRU/",
+#                                            "models/new/firstFixed/","../scripts/demos/240kDS/train/" ,
+#                                            "../scripts/demos/240kDS/validate/" )
 # training.calc_rew_of_generated_episodes("../scripts/demos/train/")
-# do_multiple_evaluations("models/1Million0.5Aux1e-5LRNoAuxTime/", "EVAL_GRU_1Million0.5Aux1e-5LRNoAuxTime/")
+do_multiple_evaluations("models/new/firstFixed/", "EVAL_GRU_240k/", "../scripts/demos/240kDS/train/",
+"../scripts/demos/240kDS/validate/")
 # training.train_file_based("../scripts/demos/")
 # find_unique_episodes("../scripts/replays7/")
 # calc_memory_saving_ret_mean("../scripts/demos/train/")
