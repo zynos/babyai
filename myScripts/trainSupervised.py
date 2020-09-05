@@ -716,13 +716,13 @@ def create_episode_len_histogram(path):
 # env = gym.make("BabyAI-PutNextLocal-v0")
 # sys.settrace
 training = Training()
-# training.visualize_low_and_high_loss_episodes("../scripts/demos/42DS/train/", "../scripts/demos/42DS/validate/"
-#                                               , "42epsTryOut/", "models/", 6, "unInit")
+training.visualize_low_and_high_loss_episodes("../scripts/demos/240kDS/train/", "../scripts/demos/240kDS/validate/"
+                                              , "testingFreshGRU/", "models/new/firstFixed/", 6, "GRU")
 # training.visualize_failed_episode_in_parts(127, 129, "failedVisualized1Million0.5Aux1e-6LRNoAuxTime/",
 #                                            "1Million0.5Aux1e-6LRNoAuxTime/", )
 # training.calc_rew_of_generated_episodes("../scripts/demos/train/")
 # do_multiple_evaluations("models/1Million0.5Aux1e-5LRNoAuxTime/", "EVAL_GRU_1Million0.5Aux1e-5LRNoAuxTime/")
-training.train_file_based("../scripts/demos/")
+# training.train_file_based("../scripts/demos/")
 # find_unique_episodes("../scripts/replays7/")
 # calc_memory_saving_ret_mean("../scripts/demos/train/")
 # my_path = "testi/"
