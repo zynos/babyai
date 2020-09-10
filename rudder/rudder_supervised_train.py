@@ -75,4 +75,4 @@ def main(path_to_demos,args):
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    main("../scripts/demos/42DS/",args)
+    main("../scripts/demos/240kDS/",args)
