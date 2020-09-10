@@ -43,7 +43,7 @@ class Training:
         self.instr_dim = 128
         self.use_widi_lstm = False
         self.use_widi_uninit = False
-        self.use_gru = True
+        self.use_gru = False
         self.action_only = False
         self.rudder.use_transformer = use_transformer
         self.rudder.transfo_upgrade = False
@@ -63,7 +63,7 @@ class Training:
         self.lr = 1e-5
         self.weight_dec = 1e-6
         self.rudder.optimizer = torch.optim.Adam(self.rudder.net.parameters(), lr=self.lr, weight_decay=self.weight_dec)
-        self.epochs = 4
+        self.epochs = 15
         self.model_type = "stdLSTm"
         if self.use_widi_lstm:
             self.model_type = "widiLSTM"
@@ -721,15 +721,16 @@ def create_episode_len_histogram(path):
 # sys.settrace
 training = Training()
 # create_episode_len_histogram("../scripts/demos/train/")
-# training.visualize_low_and_high_loss_episodes("../scripts/demos/240kDS/train/", "../scripts/demos/240kDS/validate/"
-#                                               , "testingFreshGRU/", "models/new/firstFixed/", 6, "GRU")
-# training.visualize_failed_episode_in_parts(127, 129, "failedVisualized240KGRU/",
-#                                            "models/new/firstFixed/","../scripts/demos/240kDS/train/" ,
-#                                            "../scripts/demos/240kDS/validate/" )
+model_path = "models/new/15ep/"
+training.visualize_low_and_high_loss_episodes("../scripts/demos/240kDS/train/", "../scripts/demos/240kDS/validate/"
+                                              , "testingFreshGRU15/", model_path, 6, "GRU")
+training.visualize_failed_episode_in_parts(127, 129, "failedVisualized240KGRU15/",
+                                          model_path,"../scripts/demos/240kDS/train/" ,
+                                           "../scripts/demos/240kDS/validate/" )
 # training.calc_rew_of_generated_episodes("../scripts/demos/train/")
-# do_multiple_evaluations("models/new/firstFixed/", "EVAL_GRU_240k/", "../scripts/demos/240kDS/train/",
-# "../scripts/demos/240kDS/validate/")
-training.train_file_based("../scripts/demos/240kDS/")
+do_multiple_evaluations(model_path, "EVAL_GRU_240k15/", "../scripts/demos/240kDS/train/",
+                        "../scripts/demos/240kDS/validate/")
+# training.train_file_based("../scripts/demos/240kDS/")
 # find_unique_episodes("../scripts/replays7/")
 # calc_memory_saving_ret_mean("../scripts/demos/train/")
 # my_path = "testi/"
