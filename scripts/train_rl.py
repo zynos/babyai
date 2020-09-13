@@ -225,10 +225,10 @@ if __name__ == '__main__':
         if status['i'] % args.log_interval == 0:
             # if algo.rudder.replay_buffer.nonzero_percent>0.0:
             episodes=[]
-            for my_i in range(algo.rudder.replay_buffer.max_size):
-                episodes.append(algo.rudder.replay_buffer.get_episode_from_tensors(my_i))
-            with open('replays6/replayBuffer'+str(status['i'])+'.pkl','wb') as f:
-                pickle.dump(episodes,f)
+            # for my_i in range(algo.rudder.replay_buffer.max_size):
+            #     episodes.append(algo.rudder.replay_buffer.get_episode_from_tensors(my_i))
+            # with open('replays6/replayBuffer'+str(status['i'])+'.pkl','wb') as f:
+            #     pickle.dump(episodes,f)
 
             total_ellapsed_time = int(time.time() - total_start_time)
             fps = logs["num_frames"] / (update_end_time - update_start_time)

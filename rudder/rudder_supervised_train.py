@@ -42,7 +42,7 @@ def main(path_to_demos,args):
     utils.configure_logging(args.model)
     logger = logging.getLogger(__name__)
 
-    il_learn = RudderImitation(args)
+    il_learn = RudderImitation(path_to_demos,args)
 
     # Define logger and Tensorboard writer
     header = (["update", "frames", "FPS", "duration", "entropy", "policy_loss", "train_accuracy"]
@@ -75,4 +75,4 @@ def main(path_to_demos,args):
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    main("../scripts/demos/240kDS/",args)
+    main("../scripts/demos/10kDS/",args)

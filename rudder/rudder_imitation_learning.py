@@ -4,6 +4,8 @@ import os
 import time
 import datetime
 import pickle
+from collections import Counter
+
 import gym
 import numpy as np
 import torch
@@ -68,13 +70,16 @@ class EpochIndexSampler:
 
 
 class RudderImitation(object):
-    def __init__(self, args):
+    def __init__(self,path_to_demos, args):
+        self.max_len = 128
+        self.minus_to_one_scale = True
+
         self.use_rudder = True
         self.epochs = 3
         self.args = args
         self.aux_loss_multiplier = 0.1
         self.env = gym.make(self.args.env)
-
+        self.calc_and_set_mean_and_stddev_from_episode_lens(path_to_demos)
         # demos_path = utils.get_demos_path(args.demos, args.env, args.demos_origin, valid=False)
         # demos_path_valid = utils.get_demos_path(args.demos, args.env, args.demos_origin, valid=True)
         #
@@ -148,6 +153,39 @@ class RudderImitation(object):
         else:
             return np.arange(0, num_frames, self.args.recurrence)[:-1]
 
+    def calculate_rewards_from_length(self, lens, max_len):
+        rewards = [1 - 0.9 * (l / max_len) if l != max_len else 0 for l in lens]
+        return rewards
+
+    def calc_and_set_mean_and_stddev_from_episode_lens(self, path):
+        if not "train" in path:
+            path+="train/"
+        files = [f for f in os.listdir(path) if os.path.isfile(path + f)]
+        lens = []
+        total = 0
+        for file in files:
+            with open(path + file, "rb") as f:
+                episodes = pickle.load(f)
+                total += len(episodes)
+                [lens.append(len(e[2])) for e in episodes]
+        assert len(lens) >= 1
+        c = Counter(lens)
+        print(c)
+        rewards = self.calculate_rewards_from_length(lens, self.max_len)
+        self.mean = np.mean(rewards)
+        self.std_dev = np.std(rewards)
+
+    def scale_rewards_minus_one_to_1(self, rewards):
+        rewards = (rewards - self.mean) / self.std_dev
+        return rewards
+
+    def scale_rewards(self, rewards, minus_to_one_scale=False):
+        if minus_to_one_scale:
+            rewards = self.scale_rewards_minus_one_to_1(rewards)
+        else:
+            rewards *= self.reward_scale
+        return rewards
+
     def calculate_reward(self, step_count, max_steps):
         if step_count == max_steps:
             return 0.0
@@ -185,9 +223,11 @@ class RudderImitation(object):
                     orig_rewards = [e[1][index] for e in list_of_tuples[:i + 1]]
                     dones = [e[3][index] for e in list_of_tuples[:i + 1]]
                     actions = [e[4][index] for e in list_of_tuples[:i + 1]]
-                    out.append((predictions, orig_rewards, dones, actions))
+                    obs = [e[5][index] for e in list_of_tuples[:i + 1]]
+                    out.append((predictions, orig_rewards, dones, actions, obs,self.args.model))
+        return out
 
-    def run_epoch_recurrence(self, demos, is_training=False, indices=None):
+    def run_epoch_recurrence(self, demos, is_training=False, indices=None, rudder_eval=False):
         if not indices:
             indices = list(range(len(demos)))
             if is_training:
@@ -209,7 +249,11 @@ class RudderImitation(object):
             batch = [demos[i] for i in indices[offset: offset + batch_size]]
             frames += sum([len(demo[3]) for demo in batch])
 
-            _log = self.run_epoch_recurrence_one_batch(batch, is_training=is_training)
+            if rudder_eval:
+                _log, finished_episodes = self.run_epoch_recurrence_one_batch(batch, is_training=is_training,
+                                                                              rudder_eval=rudder_eval)
+            else:
+                _log = self.run_epoch_recurrence_one_batch(batch, is_training=is_training, rudder_eval=rudder_eval)
 
             log["entropy"].append(_log["entropy"])
             log["policy_loss"].append(_log["policy_loss"])
@@ -221,9 +265,11 @@ class RudderImitation(object):
         if not is_training:
             self.acmodel.train()
 
+        if rudder_eval:
+            return log, finished_episodes
         return log
 
-    def run_epoch_recurrence_one_batch(self, batch, is_training=False):
+    def run_epoch_recurrence_one_batch(self, batch, is_training=False, rudder_eval=False):
         batch = utils.demos.transform_demos(batch)
         batch.sort(key=len, reverse=True)
         # Constructing flat batch and indices pointing to start of each demonstration
@@ -274,7 +320,7 @@ class RudderImitation(object):
                 new_memory = model_res['memory']
                 pred_rew = model_res["value"]
                 my_rews.append(
-                    (pred_rew, reward_empty_true[inds], reward_repeated_true[inds], done_step, action_true[inds]))
+                    (pred_rew, reward_empty_true[inds], reward_repeated_true[inds], done_step, action_true[inds], obs))
 
             memories[inds, :] = memory[:len(inds), :]
             memory[:len(inds), :] = new_memory
@@ -287,6 +333,8 @@ class RudderImitation(object):
 
             # Incrementing the remaining indices
             inds = [index + 1 for index in inds]
+        if rudder_eval:
+            finished_episodes = self.filter_finished_episodes(my_rews)
 
         # Here, actual backprop upto args.recurrence happens
         final_loss, final_main_loss, final_aux_loss = 0, 0, 0
@@ -333,7 +381,7 @@ class RudderImitation(object):
                 accuracy += float((action_pred == action_step.unsqueeze(1)).sum()) / total_frames
             final_loss += loss
             final_entropy += entropy
-            final_policy_loss += policy_loss
+            final_policy_loss += policy_loss.detach().clone()
             indexes += 1
 
         final_loss /= self.args.recurrence
@@ -357,6 +405,8 @@ class RudderImitation(object):
         log["accuracy"] = float(accuracy)
         log["aux_loss"] = float(final_aux_loss)
         log["main_loss"] = float(final_main_loss)
+        if rudder_eval:
+            return log, finished_episodes
         return log
 
     def get_train_and_validate_demo_files(self, path_to_demos):
