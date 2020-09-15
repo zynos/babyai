@@ -1,6 +1,7 @@
 import logging
 import os
 
+import numpy as np
 import torch
 from babyai import utils
 from babyai.arguments import ArgumentParser
@@ -32,6 +33,33 @@ def build_loss_str(e):
                                                                           float(e[2]), float(e[3][-1]),
                                                                           e[4])
 
+
+def evaluate(finished_episode, il_learn, i):
+    episode = ProcessData()
+    first_ep = finished_episode
+    predictions, orig_rewards, dones, actions, obs, model_name = first_ep
+    assert obs[0][0]["mission"] == obs[-1][0]["mission"]
+    # calculate loss
+    reward_repeated_step = orig_rewards[-1].expand(len(dones))
+    assert len(reward_repeated_step) == len(dones)
+    predictions = torch.tensor(predictions, device=il_learn.device)
+    orig_rewards = torch.tensor(orig_rewards, device=il_learn.device)
+    episode.rewards = orig_rewards
+    episode.instructions = [obs[0][0]["mission"]]
+    episode.images = torch.tensor([e[0]["image"] for e in obs], device=il_learn.device)
+    episode.actions = actions
+    my_done_step = torch.from_numpy(np.array(dones).astype(bool)).float().to(il_learn.device)
+    final_loss, (main_loss, aux_loss) = il_learn.calculate_my_loss(predictions, orig_rewards, my_done_step,
+                                                                   reward_repeated_step)
+    loss_str = build_loss_str((final_loss, main_loss, aux_loss, predictions, model_name))
+    rudder_plotter = RudderPlotter(il_learn)
+    # model pred contains (predictions.squeeze(), model_file_name[:-3], (loss, main_loss, aux_loss))
+    model_predictions = [(predictions, model_name, (final_loss, (main_loss, aux_loss)))]
+    rudder_plotter.plot_reward_redistribution("0", str(len(episode.images)) + "_" + str(i), "myOutput3/",
+                                              model_predictions, episode,
+                                              il_learn.env, top_titel=loss_str)
+
+
 def main(path_to_demos, args):
     # Verify the arguments when we train on multiple environments
     # No need to check for the length of len(args.multi_env) in case, for some reason, we need to validate on other envs
@@ -46,33 +74,16 @@ def main(path_to_demos, args):
     utils.configure_logging(args.model)
     logger = logging.getLogger(__name__)
 
-    il_learn = RudderImitation(path_to_demos,args)
+    il_learn = RudderImitation(path_to_demos, args)
     valid_files = os.listdir(path_to_demos + "validate/")
     valid_demos = il_learn.load_demos(path_to_demos + "validate/" + valid_files[0])
     log, finished_episodes = il_learn.run_epoch_recurrence(valid_demos, rudder_eval=True)
 
-    episode = ProcessData()
-    first_ep = finished_episodes[3]
-    predictions, orig_rewards, dones, actions, obs, model_name = first_ep
-    assert obs[0][0]["mission"] == obs[-1][0]["mission"]
-    #calculate loss
-    reward_repeated_step = orig_rewards[-1].expand(len(dones))
-    assert len(reward_repeated_step) == len(dones)
-    predictions = torch.tensor(predictions,device=il_learn.device)
-    orig_rewards = torch.tensor(orig_rewards,device=il_learn.device)
-    episode.rewards = orig_rewards
-    episode.instructions = [obs[0][0]["mission"]]
-    episode.images = torch.tensor([e[0]["image"] for e in obs],device=il_learn.device)
-    episode.actions = actions
-    final_loss, (main_loss, aux_loss) = il_learn.calculate_my_loss(predictions,orig_rewards,1.0,reward_repeated_step)
-    loss_str = build_loss_str((final_loss,main_loss,aux_loss,predictions,model_name))
-    rudder_plotter = RudderPlotter(il_learn)
-    # model pred contains (predictions.squeeze(), model_file_name[:-3], (loss, main_loss, aux_loss))
-    model_predictions = [(predictions,model_name,(final_loss, (main_loss, aux_loss)))]
-    rudder_plotter.plot_reward_redistribution("0", str(len(episode.images)), "myOutput/", model_predictions, episode,
-                                              il_learn.env,top_titel=loss_str)
+    for i in range(15):
+        evaluate(finished_episodes[i], il_learn, i)
+        evaluate(finished_episodes[-i], il_learn, -i)
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    main("../scripts/demos/42DS/", args)
+    main("../scripts/demos/240kDS/", args)

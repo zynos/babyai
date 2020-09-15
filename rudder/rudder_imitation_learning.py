@@ -75,7 +75,7 @@ class RudderImitation(object):
         self.minus_to_one_scale = True
 
         self.use_rudder = True
-        self.epochs = 3
+        self.epochs = 15
         self.args = args
         self.aux_loss_multiplier = 0.1
         self.env = gym.make(self.args.env)
@@ -197,7 +197,10 @@ class RudderImitation(object):
         max_steps = 128
         assert lens[0] <= max_steps
         rewards = [self.calculate_reward(l, max_steps) for l in lens]
-        empty_rewards = [torch.zeros(l, device=self.device) for l in lens]
+        if self.minus_to_one_scale:
+            rewards = self.scale_rewards(rewards,self.minus_to_one_scale)
+            empty_rewards = [self.scale_rewards(torch.zeros(l,device=self.device),self.minus_to_one_scale) for l in lens]
+            # empty_rewards = torch.from_numpy(empty_rewards).to(self.device)
         for i, reward in enumerate(rewards):
             empty_rewards[i][-1] = reward
         repeated_rewards = []

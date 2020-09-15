@@ -5,7 +5,7 @@ import os
 import torch
 from babyai import utils
 from babyai.arguments import ArgumentParser
-from rudder_imitation_learning import RudderImitation
+from rudder.rudder_imitation_learning import RudderImitation
 
 train_files = []
 test_files = []
@@ -75,4 +75,4 @@ def main(path_to_demos,args):
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    main("../scripts/demos/10kDS/",args)
+    main("../scripts/demos/240kDS/",args)

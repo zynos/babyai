@@ -20,7 +20,7 @@ class RudderPlotter:
         redistributed_rews = redistributed_rews.cpu().squeeze().numpy()
         if plot_orig:
             rews = orig_rews.cpu().clone().numpy()
-            rews = self.il_learn.scale_rewards(rews, self.il_learn.minus_to_one_scale)
+            # rews = self.il_learn.scale_rewards(rews, self.il_learn.minus_to_one_scale)
             ax.plot(rews, label="original rewards")
         ax.plot(redistributed_rews, label="redistributed rewards " + str(label))
         ax.set_xticks(list(range(len(actions))))
