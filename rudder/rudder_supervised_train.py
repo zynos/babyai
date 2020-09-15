@@ -45,8 +45,9 @@ def main(path_to_demos,args):
     il_learn = RudderImitation(path_to_demos,args)
 
     # Define logger and Tensorboard writer
-    header = (["update", "frames", "FPS", "duration", "entropy", "policy_loss", "train_accuracy"]
-              + ["validation_loss"])
+    header = (["update", "frames", "FPS", "duration", "entropy", "policy_loss", "train_accuracy",
+               "main_loss","aux_loss"]
+              + ["validation_loss","validation_main_loss","validation_aux_loss"])
     writer = None
     if args.tb:
         from tensorboardX import SummaryWriter

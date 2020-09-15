@@ -70,7 +70,7 @@ class EpochIndexSampler:
 
 
 class RudderImitation(object):
-    def __init__(self,path_to_demos, args):
+    def __init__(self, path_to_demos, args):
         self.max_len = 128
         self.minus_to_one_scale = True
 
@@ -159,7 +159,7 @@ class RudderImitation(object):
 
     def calc_and_set_mean_and_stddev_from_episode_lens(self, path):
         if not "train" in path:
-            path+="train/"
+            path += "train/"
         files = [f for f in os.listdir(path) if os.path.isfile(path + f)]
         lens = []
         total = 0
@@ -198,8 +198,9 @@ class RudderImitation(object):
         assert lens[0] <= max_steps
         rewards = [self.calculate_reward(l, max_steps) for l in lens]
         if self.minus_to_one_scale:
-            rewards = self.scale_rewards(rewards,self.minus_to_one_scale)
-            empty_rewards = [self.scale_rewards(torch.zeros(l,device=self.device),self.minus_to_one_scale) for l in lens]
+            rewards = self.scale_rewards(rewards, self.minus_to_one_scale)
+            empty_rewards = [self.scale_rewards(torch.zeros(l, device=self.device), self.minus_to_one_scale) for l in
+                             lens]
             # empty_rewards = torch.from_numpy(empty_rewards).to(self.device)
         for i, reward in enumerate(rewards):
             empty_rewards[i][-1] = reward
@@ -213,7 +214,7 @@ class RudderImitation(object):
         main_loss = (((predicted_reward - reward_empty_step) * my_done_step) ** 2).mean()
         aux_loss = ((predicted_reward - reward_repeated_step) ** 2).mean()
         final_loss = main_loss + self.aux_loss_multiplier * aux_loss
-        return final_loss, (main_loss, aux_loss)
+        return final_loss, (main_loss.detach().clone(), aux_loss.detach().clone())
 
     def filter_finished_episodes(self, list_of_tuples):
         out = []
@@ -227,7 +228,7 @@ class RudderImitation(object):
                     dones = [e[3][index] for e in list_of_tuples[:i + 1]]
                     actions = [e[4][index] for e in list_of_tuples[:i + 1]]
                     obs = [e[5][index] for e in list_of_tuples[:i + 1]]
-                    out.append((predictions, orig_rewards, dones, actions, obs,self.args.model))
+                    out.append((predictions, orig_rewards, dones, actions, obs, self.args.model))
         return out
 
     def run_epoch_recurrence(self, demos, is_training=False, indices=None, rudder_eval=False):
@@ -242,7 +243,7 @@ class RudderImitation(object):
             self.acmodel.eval()
 
         # Log dictionary
-        log = {"entropy": [], "policy_loss": [], "accuracy": []}
+        log = {"entropy": [], "policy_loss": [], "accuracy": [], "aux_loss": [], "main_loss": []}
 
         start_time = time.time()
         frames = 0
@@ -261,6 +262,8 @@ class RudderImitation(object):
             log["entropy"].append(_log["entropy"])
             log["policy_loss"].append(_log["policy_loss"])
             log["accuracy"].append(_log["accuracy"])
+            log["aux_loss"].append(_log["aux_loss"])
+            log["main_loss"].append((_log["main_loss"]))
 
             offset += batch_size
         log['total_frames'] = frames
@@ -505,10 +508,12 @@ class RudderImitation(object):
                 log[key] = np.mean(log[key])
 
             train_data = [status['i'], status['num_frames'], fps, total_ellapsed_time,
-                          log["entropy"], log["policy_loss"], log["accuracy"]]
+                          log["entropy"], log["policy_loss"], log["accuracy"], log["main_loss"],
+                          log["aux_loss"]]
 
             logger.info(
-                "U {} | F {:06} | FPS {:04.0f} | D {} | H {:.3f} | pL {: .3f} | A {: .3f}".format(*train_data))
+                "U {} | F {:06} | FPS {:04.0f} | D {} | H {:.3f} | pL {: .3f} | A {: .3f},  mainL {: .5f}  auxL {: .3f}".format(
+                    *train_data))
 
             # Log the gathered data only when we don't evaluate the validation metrics. It will be logged anyways
             # afterwards when status['i'] % self.args.val_interval == 0
@@ -530,10 +535,12 @@ class RudderImitation(object):
 
             val_log = self.run_epoch_recurrence(val_demos)
             loss = np.mean(val_log["policy_loss"])
+            loss_main = np.mean(val_log["main_loss"])
+            loss_aux = np.mean(val_log["aux_loss"])
 
             if status['i'] % self.args.log_interval == 0:
                 # validation_data = [validation_accuracy] + mean_return + success_rate
-                validation_data = [loss]
+                validation_data = [loss,loss_main,loss_aux]
 
                 assert len(header) == len(train_data + validation_data)
                 if self.args.tb:

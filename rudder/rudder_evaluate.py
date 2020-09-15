@@ -48,14 +48,14 @@ def evaluate(finished_episode, il_learn, i):
     episode.instructions = [obs[0][0]["mission"]]
     episode.images = torch.tensor([e[0]["image"] for e in obs], device=il_learn.device)
     episode.actions = actions
-    my_done_step = torch.from_numpy(np.array(dones).astype(bool)).float().to(il_learn.device)
+    my_done_step = torch.from_numpy(np.array(dones).astype(bool)).float().to(il_learn.device).flatten()
     final_loss, (main_loss, aux_loss) = il_learn.calculate_my_loss(predictions, orig_rewards, my_done_step,
                                                                    reward_repeated_step)
     loss_str = build_loss_str((final_loss, main_loss, aux_loss, predictions, model_name))
     rudder_plotter = RudderPlotter(il_learn)
     # model pred contains (predictions.squeeze(), model_file_name[:-3], (loss, main_loss, aux_loss))
     model_predictions = [(predictions, model_name, (final_loss, (main_loss, aux_loss)))]
-    rudder_plotter.plot_reward_redistribution("0", str(len(episode.images)) + "_" + str(i), "myOutput3/",
+    rudder_plotter.plot_reward_redistribution("0", str(len(episode.images)) + "_" + str(i), "myOutput5/",
                                               model_predictions, episode,
                                               il_learn.env, top_titel=loss_str)
 
