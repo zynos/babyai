@@ -40,6 +40,7 @@ class ExpertControllerFiLM(nn.Module):
         out = F.relu(out)
         return out
 
+
 # copy from babyAI model, slightly modified
 class ACModel(nn.Module, babyai.rl.RecurrentACModel):
     def __init__(self, obs_space, action_space,
@@ -57,7 +58,7 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
         self.image_dim = image_dim
         self.memory_dim = memory_dim
         self.instr_dim = instr_dim
-        self.action_space=action_space
+        self.action_space = action_space
 
         self.obs_space = obs_space
 
@@ -113,7 +114,7 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
 
         # Define memory
         if self.use_memory:
-            self.memory_rnn = nn.LSTMCell(self.image_dim, self.memory_dim)
+            self.memory_rnn = nn.LSTMCell(self.image_dim+action_space.n, self.memory_dim)
 
         # Resize image embedding
         self.embedding_size = self.semi_memory_size
@@ -127,7 +128,7 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
                 num_module = int(arch[(arch.rfind('_') + 1):])
             self.controllers = []
             for ni in range(num_module):
-                if ni < num_module-1:
+                if ni < num_module - 1:
                     mod = ExpertControllerFiLM(
                         in_features=self.final_instr_dim,
                         out_features=128, in_channels=128, imm_channels=128)
@@ -139,6 +140,7 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
                 self.add_module('FiLM_Controler_' + str(ni), mod)
 
         # Define actor's model
+        self.embedding_with_action_size = self.embedding_size+self.action_space.n
         self.actor = nn.Sequential(
             nn.Linear(self.embedding_size, 64),
             nn.Tanh(),
@@ -212,7 +214,7 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
     def semi_memory_size(self):
         return self.memory_dim
 
-    def forward(self, obs, memory, instr_embedding=None):
+    def forward(self, obs, memory, instr_embedding=None, actions=None):
         if self.use_instr and instr_embedding is None:
             instr_embedding = self._get_instr_embedding(obs.instr)
         if self.use_instr and self.lang_model == "attgru":
@@ -237,6 +239,9 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
 
         x = x.reshape(x.shape[0], -1)
 
+        one_hot_actions= F.one_hot(actions,num_classes=self.action_space.n).float()
+        x = torch.cat([x,one_hot_actions],dim=1)
+
         if self.use_memory:
             hidden = (memory[:, :self.semi_memory_size], memory[:, self.semi_memory_size:])
             hidden = self.memory_rnn(x, hidden)
@@ -254,18 +259,18 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
             extra_predictions = dict()
 
         x = self.actor(embedding)
-        logits=F.log_softmax(x, dim=1)
+        logits = F.log_softmax(x, dim=1)
         dist = Categorical(logits=logits)
 
         x = self.critic(embedding)
         value = x.squeeze(1)
 
-        #RUDDER
+        # RUDDER
         x = self.rudder_critic(embedding)
         rudder_value = x.squeeze(1)
 
         return {'dist': dist, 'value': value, 'memory': memory, 'extra_predictions': extra_predictions,
-                "embedding":embedding, "rudder_value":rudder_value,"logits":logits}
+                "embedding": embedding, "rudder_value": rudder_value, "logits": logits}
 
     def _get_instr_embedding(self, instr):
         if self.lang_model == 'gru':
@@ -301,7 +306,7 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
                 final_states = final_states[iperm_idx]
 
             if outputs.shape[1] < masks.shape[1]:
-                masks = masks[:, :(outputs.shape[1]-masks.shape[1])]
+                masks = masks[:, :(outputs.shape[1] - masks.shape[1])]
                 # the packing truncated the original length
                 # so we need to change mask to fit it
 

@@ -55,7 +55,7 @@ def evaluate(finished_episode, il_learn, i):
     rudder_plotter = RudderPlotter(il_learn)
     # model pred contains (predictions.squeeze(), model_file_name[:-3], (loss, main_loss, aux_loss))
     model_predictions = [(predictions, model_name, (final_loss, (main_loss, aux_loss)))]
-    rudder_plotter.plot_reward_redistribution("0", str(len(episode.images)) + "_" + str(i), "myOutput5/",
+    rudder_plotter.plot_reward_redistribution("0", str(len(episode.images)) + "_" + str(i), model_name+"_Eval/",
                                               model_predictions, episode,
                                               il_learn.env, top_titel=loss_str)
 

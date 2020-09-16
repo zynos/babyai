@@ -317,12 +317,13 @@ class RudderImitation(object):
             # taking observations and done located at inds
             obs = obss[inds]
             done_step = done[inds]
+            action_step2 = action_true[inds]
             preprocessed_obs = self.obss_preprocessor(obs, device=self.device)
             with torch.no_grad():
                 # taking the memory till len(inds), as demos beyond that have already finished
                 model_res = self.acmodel(
                     preprocessed_obs,
-                    memory[:len(inds), :], instr_embedding[:len(inds)])
+                    memory[:len(inds), :], instr_embedding[:len(inds)],action_step2)
                 new_memory = model_res['memory']
                 pred_rew = model_res["value"]
                 my_rews.append(
@@ -362,7 +363,7 @@ class RudderImitation(object):
             mask_step = mask[indexes]
             model_results = self.acmodel(
                 preprocessed_obs, memory * mask_step,
-                instr_embedding[episode_ids[indexes]])
+                instr_embedding[episode_ids[indexes]],action_step)
             if self.use_rudder:
                 predicted_reward = model_results['value']
                 rewards.append((predicted_reward, reward_empty_step, reward_repeated_step, my_done_step))
