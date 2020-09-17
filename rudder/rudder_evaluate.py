@@ -29,9 +29,10 @@ parser.add_argument("--epoch-length", type=int,
 
 
 def build_loss_str(e):
-    return "loss {:.4f} main {:.4f} aux {:.4f} lastPred {:.3} {} ".format(float(e[0]), float(e[1]),
-                                                                          float(e[2]), float(e[3][-1]),
-                                                                          e[4])
+    return "| loss {:.4f} main {:.4f} aux {:.4f} lastPred {:.3f}  lastRew {:.3f} {} ".format(float(e[0]), float(e[1]),
+                                                                                             float(e[2]),
+                                                                                             float(e[3][-1]),
+                                                                                             float(e[4][-1]), e[5])
 
 
 def transform_data_for_loss_calculation(predictions, orig_rewards, dones, il_learn):
@@ -43,6 +44,13 @@ def transform_data_for_loss_calculation(predictions, orig_rewards, dones, il_lea
     return reward_repeated_step, my_done_step, predictions, orig_rewards
 
 
+def calculate_my_flat_loss(predicted_reward, reward_empty_step, il_learn, reward_repeated_step):
+    main_loss = (predicted_reward[-1] - reward_empty_step[-1]) ** 2
+    aux_loss = ((predicted_reward - reward_repeated_step) ** 2).mean()
+    final_loss = main_loss + il_learn.aux_loss_multiplier * aux_loss
+    return final_loss, (main_loss.detach().clone(), aux_loss.detach().clone())
+
+
 def filter_high_and_low_loss_episodes(episodes, il_learn):
     out = []
     for episode in episodes:
@@ -50,8 +58,8 @@ def filter_high_and_low_loss_episodes(episodes, il_learn):
         reward_repeated_step, my_done_step, predictions, orig_rewards = \
             transform_data_for_loss_calculation(predictions, orig_rewards, dones, il_learn)
 
-        final_loss, (main_loss, aux_loss) = il_learn.calculate_my_loss(predictions, orig_rewards, my_done_step,
-                                                                       reward_repeated_step)
+        final_loss, (main_loss, aux_loss) = calculate_my_flat_loss(predictions, orig_rewards, il_learn,
+                                                                   reward_repeated_step)
         out.append((final_loss, episode))
 
     out.sort(key=lambda x: x[0])
@@ -68,19 +76,19 @@ def evaluate(finished_episode, il_learn, i):
         transform_data_for_loss_calculation(predictions, orig_rewards, dones, il_learn)
 
     # calculate loss
-    final_loss, (main_loss, aux_loss) = il_learn.calculate_my_loss(predictions, orig_rewards, my_done_step,
-                                                                   reward_repeated_step)
+    final_loss, (main_loss, aux_loss) = calculate_my_flat_loss(predictions, orig_rewards, il_learn,
+                                                               reward_repeated_step)
 
     episode.rewards = orig_rewards
     episode.instructions = [obs[0][0]["mission"]]
     episode.images = torch.tensor([e[0]["image"] for e in obs], device=il_learn.device)
     episode.actions = actions
-    loss_str = build_loss_str((final_loss, main_loss, aux_loss, predictions, model_name))
+    loss_str = build_loss_str((final_loss, main_loss, aux_loss, predictions, orig_rewards, model_name))
     rudder_plotter = RudderPlotter(il_learn)
     # model pred contains (predictions.squeeze(), model_file_name[:-3], (loss, main_loss, aux_loss))
     model_predictions = [(predictions, model_name, (final_loss, (main_loss, aux_loss)))]
     rudder_plotter.plot_reward_redistribution("0", str(len(episode.images)) + "_" + str(i),
-                                              "HiLowLoss" + model_name + "_Eval/",
+                                              "Tryout_HiLowLoss" + model_name + "_Eval/",
                                               model_predictions, episode,
                                               il_learn.env, top_titel=loss_str)
 
