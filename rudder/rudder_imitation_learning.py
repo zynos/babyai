@@ -75,7 +75,7 @@ class RudderImitation(object):
         self.minus_to_one_scale = True
 
         self.use_rudder = True
-        self.epochs = 15
+        self.epochs = 10
         self.args = args
         self.aux_loss_multiplier = 0.1
         self.env = gym.make(self.args.env)
