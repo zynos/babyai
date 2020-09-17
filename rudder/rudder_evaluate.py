@@ -63,10 +63,11 @@ def filter_high_and_low_loss_episodes(episodes, il_learn):
         out.append((final_loss, episode))
 
     out.sort(key=lambda x: x[0])
+    out = [o[1] for o in out]
     return out
 
 
-def evaluate(finished_episode, il_learn, i):
+def evaluate(finished_episode, il_learn, i, output_path_prefix):
     episode = ProcessData()
     predictions, orig_rewards, dones, actions, obs, model_name = finished_episode
     assert obs[0][0]["mission"] == obs[-1][0]["mission"]
@@ -88,12 +89,29 @@ def evaluate(finished_episode, il_learn, i):
     # model pred contains (predictions.squeeze(), model_file_name[:-3], (loss, main_loss, aux_loss))
     model_predictions = [(predictions, model_name, (final_loss, (main_loss, aux_loss)))]
     rudder_plotter.plot_reward_redistribution("0", str(len(episode.images)) + "_" + str(i),
-                                              "Tryout_HiLowLoss" + model_name + "_Eval/",
+                                              output_path_prefix + model_name + "_Eval/",
                                               model_predictions, episode,
                                               il_learn.env, top_titel=loss_str)
 
 
-def main(path_to_demos, args):
+def eval_multiple_episodes(episodes, il_learn, output_path_prefix):
+    for i in range(15):
+        evaluate(episodes[i], il_learn, i, output_path_prefix)
+        j = -(i + 1)
+        evaluate(episodes[j], il_learn, j, output_path_prefix)
+
+
+def generate_eval_pictures(filter_after_loss, il_learn, finished_episodes):
+    if filter_after_loss:
+        output_path_prefix = "filtered_"
+        filtered_episodes = filter_high_and_low_loss_episodes(finished_episodes, il_learn)
+        eval_multiple_episodes(filtered_episodes, il_learn, output_path_prefix)
+    else:
+        output_path_prefix = "unfiltered_"
+        eval_multiple_episodes(finished_episodes, il_learn, output_path_prefix)
+
+
+def main(path_to_demos, filter_after_loss, output_path_prefix, args):
     # Verify the arguments when we train on multiple environments
     # No need to check for the length of len(args.multi_env) in case, for some reason, we need to validate on other envs
     if args.multi_env is not None:
@@ -112,13 +130,12 @@ def main(path_to_demos, args):
     valid_demos = il_learn.load_demos(path_to_demos + "validate/" + valid_files[0])
     log, finished_episodes = il_learn.run_epoch_recurrence(valid_demos, rudder_eval=True)
 
-    filtered_episodes = filter_high_and_low_loss_episodes(finished_episodes, il_learn)
-    for i in range(15):
-        evaluate(filtered_episodes[i][1], il_learn, i)
-        j = -(i + 1)
-        evaluate(filtered_episodes[j][1], il_learn, j)
+    # generate unfiltered reproducable output
+    generate_eval_pictures(False, il_learn, finished_episodes)
+    # generate filtered non reproducable output
+    generate_eval_pictures(True, il_learn, finished_episodes)
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    main("../scripts/demos/1mDS/", args)
+    main("../scripts/demos/1mDS/", False, "unfiltered_", args)
