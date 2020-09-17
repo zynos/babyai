@@ -34,6 +34,21 @@ def build_loss_str(e):
                                                                           e[4])
 
 
+def filter_high_and_low_loss_episodes(episodes, il_learn):
+    out=[]
+    for episode in episodes:
+        predictions, orig_rewards, dones, actions, obs, model_name = episode
+        reward_repeated_step = orig_rewards[-1].expand(len(dones))
+        my_done_step = torch.from_numpy(np.array(dones).astype(bool)).float().to(il_learn.device).flatten()
+        final_loss, (main_loss, aux_loss) = il_learn.calculate_my_loss(predictions, orig_rewards, my_done_step,
+                                                                       reward_repeated_step)
+        out.append((final_loss,episode))
+
+    out.sort(key=lambda x: x[0])
+    return out
+
+
+
 def evaluate(finished_episode, il_learn, i):
     episode = ProcessData()
     first_ep = finished_episode
@@ -55,7 +70,7 @@ def evaluate(finished_episode, il_learn, i):
     rudder_plotter = RudderPlotter(il_learn)
     # model pred contains (predictions.squeeze(), model_file_name[:-3], (loss, main_loss, aux_loss))
     model_predictions = [(predictions, model_name, (final_loss, (main_loss, aux_loss)))]
-    rudder_plotter.plot_reward_redistribution("0", str(len(episode.images)) + "_" + str(i), model_name+"_Eval/",
+    rudder_plotter.plot_reward_redistribution("0", str(len(episode.images)) + "_" + str(i), "HiLowLoss"+model_name + "_Eval/",
                                               model_predictions, episode,
                                               il_learn.env, top_titel=loss_str)
 
@@ -79,9 +94,11 @@ def main(path_to_demos, args):
     valid_demos = il_learn.load_demos(path_to_demos + "validate/" + valid_files[0])
     log, finished_episodes = il_learn.run_epoch_recurrence(valid_demos, rudder_eval=True)
 
+    filtered_episodes = filter_high_and_low_loss_episodes(finished_episodes,il_learn)
     for i in range(15):
-        evaluate(finished_episodes[i], il_learn, i)
-        evaluate(finished_episodes[-i], il_learn, -i)
+        evaluate(filtered_episodes[i][1], il_learn, i)
+        j = -(i + 1)
+        evaluate(filtered_episodes[j][1], il_learn, j)
 
 
 if __name__ == "__main__":
