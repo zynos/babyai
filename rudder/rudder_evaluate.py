@@ -34,43 +34,53 @@ def build_loss_str(e):
                                                                           e[4])
 
 
+def transform_data_for_loss_calculation(predictions, orig_rewards, dones, il_learn):
+    my_done_step = torch.from_numpy(np.array(dones).astype(bool)).float().to(il_learn.device).flatten()
+    reward_repeated_step = orig_rewards[-1].expand(len(dones))
+    assert len(reward_repeated_step) == len(dones)
+    predictions = torch.tensor(predictions, device=il_learn.device)
+    orig_rewards = torch.tensor(orig_rewards, device=il_learn.device)
+    return reward_repeated_step, my_done_step, predictions, orig_rewards
+
+
 def filter_high_and_low_loss_episodes(episodes, il_learn):
-    out=[]
+    out = []
     for episode in episodes:
         predictions, orig_rewards, dones, actions, obs, model_name = episode
-        reward_repeated_step = orig_rewards[-1].expand(len(dones))
-        my_done_step = torch.from_numpy(np.array(dones).astype(bool)).float().to(il_learn.device).flatten()
+        reward_repeated_step, my_done_step, predictions, orig_rewards = \
+            transform_data_for_loss_calculation(predictions, orig_rewards, dones, il_learn)
+
         final_loss, (main_loss, aux_loss) = il_learn.calculate_my_loss(predictions, orig_rewards, my_done_step,
                                                                        reward_repeated_step)
-        out.append((final_loss,episode))
+        out.append((final_loss, episode))
 
     out.sort(key=lambda x: x[0])
     return out
 
 
-
 def evaluate(finished_episode, il_learn, i):
     episode = ProcessData()
-    first_ep = finished_episode
-    predictions, orig_rewards, dones, actions, obs, model_name = first_ep
+    predictions, orig_rewards, dones, actions, obs, model_name = finished_episode
     assert obs[0][0]["mission"] == obs[-1][0]["mission"]
+
+    # transform to tensors
+    reward_repeated_step, my_done_step, predictions, orig_rewards = \
+        transform_data_for_loss_calculation(predictions, orig_rewards, dones, il_learn)
+
     # calculate loss
-    reward_repeated_step = orig_rewards[-1].expand(len(dones))
-    assert len(reward_repeated_step) == len(dones)
-    predictions = torch.tensor(predictions, device=il_learn.device)
-    orig_rewards = torch.tensor(orig_rewards, device=il_learn.device)
+    final_loss, (main_loss, aux_loss) = il_learn.calculate_my_loss(predictions, orig_rewards, my_done_step,
+                                                                   reward_repeated_step)
+
     episode.rewards = orig_rewards
     episode.instructions = [obs[0][0]["mission"]]
     episode.images = torch.tensor([e[0]["image"] for e in obs], device=il_learn.device)
     episode.actions = actions
-    my_done_step = torch.from_numpy(np.array(dones).astype(bool)).float().to(il_learn.device).flatten()
-    final_loss, (main_loss, aux_loss) = il_learn.calculate_my_loss(predictions, orig_rewards, my_done_step,
-                                                                   reward_repeated_step)
     loss_str = build_loss_str((final_loss, main_loss, aux_loss, predictions, model_name))
     rudder_plotter = RudderPlotter(il_learn)
     # model pred contains (predictions.squeeze(), model_file_name[:-3], (loss, main_loss, aux_loss))
     model_predictions = [(predictions, model_name, (final_loss, (main_loss, aux_loss)))]
-    rudder_plotter.plot_reward_redistribution("0", str(len(episode.images)) + "_" + str(i), "HiLowLoss"+model_name + "_Eval/",
+    rudder_plotter.plot_reward_redistribution("0", str(len(episode.images)) + "_" + str(i),
+                                              "HiLowLoss" + model_name + "_Eval/",
                                               model_predictions, episode,
                                               il_learn.env, top_titel=loss_str)
 
@@ -94,7 +104,7 @@ def main(path_to_demos, args):
     valid_demos = il_learn.load_demos(path_to_demos + "validate/" + valid_files[0])
     log, finished_episodes = il_learn.run_epoch_recurrence(valid_demos, rudder_eval=True)
 
-    filtered_episodes = filter_high_and_low_loss_episodes(finished_episodes,il_learn)
+    filtered_episodes = filter_high_and_low_loss_episodes(finished_episodes, il_learn)
     for i in range(15):
         evaluate(filtered_episodes[i][1], il_learn, i)
         j = -(i + 1)
