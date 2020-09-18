@@ -32,17 +32,17 @@ parser.add_argument("--epoch-length", type=int,
                     help="number of examples per epoch")
 
 
-def main(path_to_demos,args):
+def main(path_to_demos,action_input,args):
     # Verify the arguments when we train on multiple environments
     # No need to check for the length of len(args.multi_env) in case, for some reason, we need to validate on other envs
     if args.multi_env is not None:
         assert len(args.multi_demos) == len(args.multi_episodes)
 
-    args.model = args.model or RudderImitation.default_model_name(args)
+    args.model = args.model or RudderImitation.default_model_name(action_input,args)
     utils.configure_logging(args.model)
     logger = logging.getLogger(__name__)
 
-    il_learn = RudderImitation(path_to_demos,args)
+    il_learn = RudderImitation(path_to_demos,action_input,args)
 
     # Define logger and Tensorboard writer
     header = (["update", "frames", "FPS", "duration", "entropy", "policy_loss", "train_accuracy",
@@ -76,4 +76,4 @@ def main(path_to_demos,args):
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    main("../scripts/demos/1mDS/",args)
+    main("../scripts/demos/1mDS/",False,args)

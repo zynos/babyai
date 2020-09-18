@@ -10,7 +10,7 @@ import gym
 import numpy as np
 import torch
 from babyai import utils
-from rudder_model import ACModel
+from rudder.rudder_model import ACModel
 
 logger = logging.getLogger(__name__)
 
@@ -70,10 +70,10 @@ class EpochIndexSampler:
 
 
 class RudderImitation(object):
-    def __init__(self, path_to_demos, args):
+    def __init__(self, path_to_demos,use_actions, args):
         self.max_len = 128
         self.minus_to_one_scale = True
-
+        self.use_actions = use_actions
         self.use_rudder = True
         self.epochs = 10
         self.args = args
@@ -112,7 +112,7 @@ class RudderImitation(object):
                 self.acmodel = ACModel(self.obss_preprocessor.obs_space, action_space,
                                        args.image_dim, args.memory_dim, args.instr_dim,
                                        not self.args.no_instr, self.args.instr_arch,
-                                       not self.args.no_mem, self.args.arch)
+                                       not self.args.no_mem, self.args.arch,without_action=not use_actions)
         self.obss_preprocessor.vocab.save()
         utils.save_model(self.acmodel, args.model)
 
@@ -126,7 +126,7 @@ class RudderImitation(object):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     @staticmethod
-    def default_model_name(args):
+    def default_model_name(action_input,args):
         if getattr(args, 'multi_env', None):
             # It's better to specify one's own model name for this scenario
             named_envs = '-'.join(args.multi_env)
@@ -141,8 +141,9 @@ class RudderImitation(object):
             'arch': args.arch,
             'instr': instr,
             'seed': args.seed,
+            'action': action_input,
             'suffix': suffix}
-        default_model_name = "{envs}_IL_{arch}_{instr}_seed{seed}_{suffix}".format(**model_name_parts)
+        default_model_name = "{envs}_IL_{arch}_{instr}_seed{seed}_actionIn_{action}_{suffix}".format(**model_name_parts)
         if getattr(args, 'pretrained_model', None):
             default_model_name = args.pretrained_model + '_pretrained_' + default_model_name
         return default_model_name
