@@ -46,7 +46,7 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
     def __init__(self, obs_space, action_space,
                  image_dim=128, memory_dim=128, instr_dim=128,
                  use_instr=False, lang_model="gru", use_memory=False, arch="cnn1",
-                 aux_info=None,without_action=False):
+                 aux_info=None,add_actions_to_lstm=True,add_actions_to_film=True):
         super().__init__()
 
         # Decide which components are enabled
@@ -59,7 +59,8 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
         self.memory_dim = memory_dim
         self.instr_dim = instr_dim
         self.action_space = action_space
-        self.no_action_input = without_action
+        self.add_actions_to_lstm = add_actions_to_lstm
+        self.add_actions_to_film = add_actions_to_film
 
         self.obs_space = obs_space
 
@@ -115,10 +116,10 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
 
         # Define memory
         if self.use_memory:
-            if self.no_action_input:
-                self.memory_rnn = nn.LSTMCell(self.image_dim, self.memory_dim)
-            else:
+            if self.add_actions_to_lstm:
                 self.memory_rnn = nn.LSTMCell(self.image_dim+action_space.n, self.memory_dim)
+            else:
+                self.memory_rnn = nn.LSTMCell(self.image_dim, self.memory_dim)
 
 
 
@@ -133,14 +134,19 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
             else:
                 num_module = int(arch[(arch.rfind('_') + 1):])
             self.controllers = []
+            if self.add_actions_to_film:
+                embedding_input_dim = self.final_instr_dim+self.action_space.n
+            else:
+                embedding_input_dim = self.final_instr_dim
+
             for ni in range(num_module):
                 if ni < num_module - 1:
                     mod = ExpertControllerFiLM(
-                        in_features=self.final_instr_dim,
+                        in_features=embedding_input_dim,
                         out_features=128, in_channels=128, imm_channels=128)
                 else:
                     mod = ExpertControllerFiLM(
-                        in_features=self.final_instr_dim, out_features=self.image_dim,
+                        in_features=embedding_input_dim, out_features=self.image_dim,
                         in_channels=128, imm_channels=128)
                 self.controllers.append(mod)
                 self.add_module('FiLM_Controler_' + str(ni), mod)
@@ -234,6 +240,11 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
             instr_embedding = (instr_embedding * attention[:, :, None]).sum(1)
 
         x = torch.transpose(torch.transpose(obs.image, 1, 3), 2, 3)
+        if self.add_actions_to_film or self.add_actions_to_lstm:
+            one_hot_actions = F.one_hot(actions, num_classes=self.action_space.n).float()
+
+        if self.add_actions_to_film:
+            instr_embedding = torch.cat([instr_embedding, one_hot_actions], dim=1)
 
         if self.arch.startswith("expert_filmcnn"):
             x = self.image_conv(x)
@@ -244,9 +255,8 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
             x = self.image_conv(x)
 
         x = x.reshape(x.shape[0], -1)
-        
-        if not self.no_action_input:
-            one_hot_actions= F.one_hot(actions,num_classes=self.action_space.n).float()
+
+        if self.add_actions_to_lstm:
             x = torch.cat([x,one_hot_actions],dim=1)
 
         if self.use_memory:
