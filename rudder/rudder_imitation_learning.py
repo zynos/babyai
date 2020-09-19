@@ -79,7 +79,8 @@ class RudderImitation(object):
         self.args = args
         self.aux_loss_multiplier = 0.1
         self.env = gym.make(self.args.env)
-        self.calc_and_set_mean_and_stddev_from_episode_lens(path_to_demos)
+        if path_to_demos:
+            self.calc_and_set_mean_and_stddev_from_episode_lens(path_to_demos)
 
         observation_space = self.env.observation_space
         action_space = self.env.action_space

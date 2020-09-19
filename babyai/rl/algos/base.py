@@ -9,7 +9,7 @@ from babyai.rl.format import default_preprocess_obss
 from babyai.rl.utils import DictList, ParallelEnv
 from babyai.rl.utils.supervised_losses import ExtraInfoCollector
 from myScripts.ReplayBuffer import ReplayBuffer
-from myScripts.Rudder import Rudder
+from rudder.rudder_main import Rudder
 from myScripts.asyncTrain import start_background_process
 
 
@@ -122,9 +122,11 @@ class BaseAlgo(ABC):
 
         # RUDDER changes
         self.use_rudder = True
-        self.rudder = Rudder(acmodel.memory_dim, self.num_procs, acmodel.obs_space,
-                             acmodel.instr_dim, acmodel.memory_dim, acmodel.image_dim,
-                             acmodel.action_space.n, self.device)
+        # self.rudder = Rudder(self.num_procs, acmodel.obs_space,
+        #                      acmodel.instr_dim, acmodel.memory_dim, acmodel.image_dim,
+        #                      acmodel.action_space.n, self.device)
+        self.rudder = Rudder(self.num_procs, self.device,40,
+                             acmodel.instr_dim, acmodel.memory_dim, acmodel.image_dim)
         # self.ctx=mp.get_context("spawn")
         # self.queue=self.ctx.Queue()
         # self.async_func=start_background_process

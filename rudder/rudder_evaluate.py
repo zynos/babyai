@@ -111,7 +111,7 @@ def generate_eval_pictures(filter_after_loss, il_learn, finished_episodes):
         eval_multiple_episodes(finished_episodes, il_learn, output_path_prefix)
 
 
-def main(path_to_demos, filter_after_loss, output_path_prefix, args):
+def main(path_to_demos, args):
     # Verify the arguments when we train on multiple environments
     # No need to check for the length of len(args.multi_env) in case, for some reason, we need to validate on other envs
     if args.multi_env is not None:
@@ -125,7 +125,7 @@ def main(path_to_demos, filter_after_loss, output_path_prefix, args):
     utils.configure_logging(args.model)
     logger = logging.getLogger(__name__)
 
-    il_learn = RudderImitation(path_to_demos,None,None, args)
+    il_learn = RudderImitation(path_to_demos, None, None, args)
     valid_files = os.listdir(path_to_demos + "validate/")
     valid_demos = il_learn.load_demos(path_to_demos + "validate/" + valid_files[0])
     log, finished_episodes = il_learn.run_epoch_recurrence(valid_demos, rudder_eval=True)
@@ -138,4 +138,4 @@ def main(path_to_demos, filter_after_loss, output_path_prefix, args):
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    main("../scripts/demos/1mDS/", False, "unfiltered_", args)
+    main("../scripts/demos/1mDS/", args)
