@@ -73,28 +73,13 @@ class RudderImitation(object):
     def __init__(self, path_to_demos, add_actions_to_lstm, add_actions_to_film, args):
         self.max_len = 128
         self.minus_to_one_scale = True
-        self.use_actions = use_actions
+        # self.use_actions = use_actions
         self.use_rudder = True
         self.epochs = 8
         self.args = args
         self.aux_loss_multiplier = 0.1
         self.env = gym.make(self.args.env)
         self.calc_and_set_mean_and_stddev_from_episode_lens(path_to_demos)
-        # demos_path = utils.get_demos_path(args.demos, args.env, args.demos_origin, valid=False)
-        # demos_path_valid = utils.get_demos_path(args.demos, args.env, args.demos_origin, valid=True)
-        #
-        # logger.info('loading demos')
-        # self.train_demos = utils.load_demos(demos_path)
-        # logger.info('loaded demos')
-        # if args.episodes:
-        #     if args.episodes > len(self.train_demos):
-        #         raise ValueError("there are only {} train demos".format(len(self.train_demos)))
-        #     self.train_demos = self.train_demos[:args.episodes]
-        #
-        # self.val_demos = utils.load_demos(demos_path_valid)
-        # if args.val_episodes > len(self.val_demos):
-        #     logger.info('Using all the available {} demos to evaluate valid. accuracy'.format(len(self.val_demos)))
-        # self.val_demos = self.val_demos[:self.args.val_episodes]
 
         observation_space = self.env.observation_space
         action_space = self.env.action_space
