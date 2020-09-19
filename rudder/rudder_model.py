@@ -117,9 +117,9 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
         # Define memory
         if self.use_memory:
             if self.add_actions_to_lstm:
-                self.memory_rnn = nn.LSTMCell(self.image_dim, self.memory_dim)
-            else:
                 self.memory_rnn = nn.LSTMCell(self.image_dim+action_space.n, self.memory_dim)
+            else:
+                self.memory_rnn = nn.LSTMCell(self.image_dim, self.memory_dim)
 
 
 
