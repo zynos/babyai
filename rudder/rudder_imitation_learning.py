@@ -244,7 +244,7 @@ class RudderImitation(object):
             self.acmodel.eval()
 
         # Log dictionary
-        log = {"entropy": [], "policy_loss": [], "accuracy": [], "aux_loss": [], "main_loss": []}
+        log = {"entropy": [], "policy_loss": [], "accuracy": [], "aux_loss": [], "main_loss": [],"grad_norm": []}
 
         start_time = time.time()
         frames = 0
@@ -265,6 +265,7 @@ class RudderImitation(object):
             log["accuracy"].append(_log["accuracy"])
             log["aux_loss"].append(_log["aux_loss"])
             log["main_loss"].append((_log["main_loss"]))
+            log["grad_norm"].append((_log["grad_norm"]))
 
             offset += batch_size
         log['total_frames'] = frames
@@ -511,10 +512,11 @@ class RudderImitation(object):
 
             train_data = [status['i'], status['num_frames'], fps, total_ellapsed_time,
                           log["entropy"], log["policy_loss"], log["accuracy"], log["main_loss"],
-                          log["aux_loss"]]
+                          log["aux_loss"],log["grad_norm"]]
 
             logger.info(
-                "U {} | F {:06} | FPS {:04.0f} | D {} | H {:.3f} | pL {: .3f} | A {: .3f},  mainL {: .5f}  auxL {: .3f}".format(
+                "U {} | F {:06} | FPS {:04.0f} | D {} | H {:.3f} | pL {: .3f} | A {: .3f}, mainL {: .5f}"
+                " auxL {: .3f} gradN {: .3f}".format(
                     *train_data))
 
             # Log the gathered data only when we don't evaluate the validation metrics. It will be logged anyways
