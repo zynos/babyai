@@ -70,12 +70,12 @@ class EpochIndexSampler:
 
 
 class RudderImitation(object):
-    def __init__(self, path_to_demos,use_actions, args):
+    def __init__(self, path_to_demos, add_actions_to_lstm, add_actions_to_film, args):
         self.max_len = 128
         self.minus_to_one_scale = True
         self.use_actions = use_actions
         self.use_rudder = True
-        self.epochs = 10
+        self.epochs = 8
         self.args = args
         self.aux_loss_multiplier = 0.1
         self.env = gym.make(self.args.env)
@@ -112,7 +112,8 @@ class RudderImitation(object):
                 self.acmodel = ACModel(self.obss_preprocessor.obs_space, action_space,
                                        args.image_dim, args.memory_dim, args.instr_dim,
                                        not self.args.no_instr, self.args.instr_arch,
-                                       not self.args.no_mem, self.args.arch,without_action=not use_actions)
+                                       not self.args.no_mem, self.args.arch, add_actions_to_lstm=add_actions_to_lstm,
+                                       add_actions_to_film=add_actions_to_film)
         self.obss_preprocessor.vocab.save()
         utils.save_model(self.acmodel, args.model)
 
@@ -126,7 +127,7 @@ class RudderImitation(object):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     @staticmethod
-    def default_model_name(action_input,args):
+    def default_model_name(action_input_lstm, action_input_film, args):
         if getattr(args, 'multi_env', None):
             # It's better to specify one's own model name for this scenario
             named_envs = '-'.join(args.multi_env)
@@ -141,9 +142,11 @@ class RudderImitation(object):
             'arch': args.arch,
             'instr': instr,
             'seed': args.seed,
-            'action': action_input,
+            'act_LSTM': action_input_lstm,
+            'act_FILM': action_input_film,
             'suffix': suffix}
-        default_model_name = "{envs}_IL_{arch}_{instr}_seed{seed}_actionIn_{action}_{suffix}".format(**model_name_parts)
+        default_model_name = "{envs}_IL_{arch}_{instr}_seed{seed}" \
+                             "_act_LSTM_{act_LSTM}_act_FILM_{act_FILM}_{suffix}".format(**model_name_parts)
         if getattr(args, 'pretrained_model', None):
             default_model_name = args.pretrained_model + '_pretrained_' + default_model_name
         return default_model_name
@@ -324,7 +327,7 @@ class RudderImitation(object):
                 # taking the memory till len(inds), as demos beyond that have already finished
                 model_res = self.acmodel(
                     preprocessed_obs,
-                    memory[:len(inds), :], instr_embedding[:len(inds)],action_step2)
+                    memory[:len(inds), :], instr_embedding[:len(inds)], action_step2)
                 new_memory = model_res['memory']
                 pred_rew = model_res["value"]
                 my_rews.append(
@@ -364,7 +367,7 @@ class RudderImitation(object):
             mask_step = mask[indexes]
             model_results = self.acmodel(
                 preprocessed_obs, memory * mask_step,
-                instr_embedding[episode_ids[indexes]],action_step)
+                instr_embedding[episode_ids[indexes]], action_step)
             if self.use_rudder:
                 predicted_reward = model_results['value']
                 rewards.append((predicted_reward, reward_empty_step, reward_repeated_step, my_done_step))
@@ -542,7 +545,7 @@ class RudderImitation(object):
 
             if status['i'] % self.args.log_interval == 0:
                 # validation_data = [validation_accuracy] + mean_return + success_rate
-                validation_data = [loss,loss_main,loss_aux]
+                validation_data = [loss, loss_main, loss_aux]
 
                 assert len(header) == len(train_data + validation_data)
                 if self.args.tb:
