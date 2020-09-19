@@ -46,7 +46,7 @@ def main(path_to_demos,add_actions_to_lstm,add_actions_to_film,args):
 
     # Define logger and Tensorboard writer
     header = (["update", "frames", "FPS", "duration", "entropy", "policy_loss", "train_accuracy",
-               "main_loss","aux_loss"]
+               "main_loss","aux_loss","grad_norm"]
               + ["validation_loss","validation_main_loss","validation_aux_loss"])
     writer = None
     if args.tb:

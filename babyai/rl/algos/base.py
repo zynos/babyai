@@ -176,26 +176,6 @@ class BaseAlgo(ABC):
         self.rudder.replay_buffer.init_process_data(self.rudder.replay_buffer.procs_to_init, i)
         #     # print("rudder rewards")
 
-        ### ASYNCHRONOUS
-
-        # if self.rudder.replay_buffer.buffer_full() and self.queue_into_rudder.empty():
-        #     self.queue_into_rudder.put(self.rudder.replay_buffer.get_cloned_copy())
-        # # print("qsize", self.queue_into_rudder.qsize())
-        # # print("i , self.queue_back_from_rudder.empty()",i, self.queue_back_from_rudder.empty())
-        #
-        # if self.rudder.replay_buffer.buffer_full() and self.rudder.replay_buffer.encountered_different_returns() and i % 39 == 0:
-        #     print("recalc")
-        #     self.rudder.recalculate_all_losses()
-        #     print("recalc done")
-        # if not self.queue_back_from_rudder.empty():
-        #     print("wanna get queue food")
-        #     self.rudder.first_training_done = queue_back_from_rudder.get()
-        #     self.rudder.parallel_train_done = True
-        #     assert isinstance(self.rudder.first_training_done, bool)
-        # if self.rudder.first_training_done:
-        #     self.rewards[i] = self.rudder.predict_reward(embedding, action, rewards, done,
-        #                                                  instr, image)
-        # assert 0==1
 
         return rudder_loss, last_ts_pred, full_pred
 
