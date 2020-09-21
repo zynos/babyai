@@ -44,10 +44,22 @@ def transform_data_for_loss_calculation(predictions, orig_rewards, dones, il_lea
     return reward_repeated_step, my_done_step, predictions, orig_rewards
 
 
-def calculate_my_flat_loss(predicted_reward, reward_empty_step, il_learn, reward_repeated_step):
-    main_loss = (predicted_reward[-1] - reward_empty_step[-1]) ** 2
+def calc_quality(diff):
+    # diff is g - gT_hat -->  see rudder paper A267
+    quality_threshold = 0.8
+    mu = 1
+    quality = 1 - (np.abs(diff.item()) / mu) * 1 / (1 - quality_threshold)
+    return quality
+
+
+def calculate_my_flat_loss(predicted_reward, reward_empty_step, il_learn, reward_repeated_step,return_quality=False):
+    diff = predicted_reward[-1] - reward_empty_step[-1]
+    main_loss = (diff) ** 2
     aux_loss = ((predicted_reward - reward_repeated_step) ** 2).mean()
     final_loss = main_loss + il_learn.aux_loss_multiplier * aux_loss
+    if return_quality:
+        quality = calc_quality(diff)
+        return final_loss, (main_loss.detach().clone(), aux_loss.detach().clone()),quality
     return final_loss, (main_loss.detach().clone(), aux_loss.detach().clone())
 
 

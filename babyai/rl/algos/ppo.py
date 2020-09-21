@@ -82,7 +82,7 @@ class PPOAlgo(BaseAlgo):
                 batch_policy_loss = 0
                 batch_value_loss = 0
                 batch_loss = 0
-                batch_rud_val_loss = 0
+                batch_rud_val_loss = torch.tensor(0,device=self.device)
 
                 # Initialize memory
 
@@ -114,6 +114,7 @@ class PPOAlgo(BaseAlgo):
                     value_loss = torch.max(surr1, surr2).mean()
 
                     # RUDDER
+                    rudder_value_loss = 0
                     if self.use_rudder:
                         rudder_value_clipped = sb.rudder_value + torch.clamp(rudder_value - sb.rudder_value,
                                                                              -self.clip_eps, self.clip_eps)

@@ -121,12 +121,12 @@ class BaseAlgo(ABC):
         self.log_num_frames = [0] * self.num_procs
 
         # RUDDER changes
-        self.use_rudder = True
+        self.use_rudder = False
         # self.rudder = Rudder(self.num_procs, acmodel.obs_space,
         #                      acmodel.instr_dim, acmodel.memory_dim, acmodel.image_dim,
         #                      acmodel.action_space.n, self.device)
         self.rudder = Rudder(self.num_procs, self.device,40,
-                             acmodel.instr_dim, acmodel.memory_dim, acmodel.image_dim)
+                             acmodel.instr_dim, acmodel.memory_dim, acmodel.image_dim,lr)
         # self.ctx=mp.get_context("spawn")
         # self.queue=self.ctx.Queue()
         # self.async_func=start_background_process
@@ -251,6 +251,7 @@ class BaseAlgo(ABC):
                 self.rewards[i] = torch.tensor(reward, device=self.device)
             # print("checkpoint 7")
             # RUDDER entry
+            rudder_loss, last_ts_pred, last_rew_mean = 0,0,0
             if self.use_rudder:
                 rudder_loss, last_ts_pred, last_rew_mean = \
                     self.update_rudder_and_rescale_rewards(obs,update_nr, i, self.queue_into_rudder,

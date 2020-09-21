@@ -186,7 +186,7 @@ class RudderImitation(object):
         # only 0 required because its sorted
         max_steps = 128
         assert lens[0] <= max_steps
-        rewards = [self.calculate_reward(l, max_steps) for l in lens]
+        rewards = np.array([self.calculate_reward(l, max_steps) for l in lens])
         if self.minus_to_one_scale:
             rewards = self.scale_rewards(rewards, self.minus_to_one_scale)
             empty_rewards = [self.scale_rewards(torch.zeros(l, device=self.device), self.minus_to_one_scale) for l in
@@ -233,7 +233,7 @@ class RudderImitation(object):
             self.acmodel.eval()
 
         # Log dictionary
-        log = {"entropy": [], "policy_loss": [], "accuracy": [], "aux_loss": [], "main_loss": [],"grad_norm": []}
+        log = {"entropy": [], "policy_loss": [], "accuracy": [], "aux_loss": [], "main_loss": [], "grad_norm": []}
 
         start_time = time.time()
         frames = 0
@@ -266,9 +266,14 @@ class RudderImitation(object):
             return log, finished_episodes
         return log
 
-    def run_epoch_recurrence_one_batch(self, batch, is_training=False, rudder_eval=False):
-        batch = utils.demos.transform_demos(batch)
-        batch.sort(key=len, reverse=True)
+    def run_epoch_recurrence_one_batch(self, batch, is_training=False, rudder_eval=False, rl_input=False):
+        if not rl_input:
+            batch = utils.demos.transform_demos(batch)
+            batch.sort(key=len, reverse=True)
+        else:
+            batch.sort(key=lambda x: len(x[0]), reverse=True)
+            my_indices = [i[1] for i in batch]
+            batch = [b[0] for b in batch]
         # Constructing flat batch and indices pointing to start of each demonstration
         flat_batch = []
         inds = [0]
@@ -403,6 +408,9 @@ class RudderImitation(object):
         log["accuracy"] = float(accuracy)
         log["aux_loss"] = float(final_aux_loss)
         log["main_loss"] = float(final_main_loss)
+
+        if rl_input:
+            return log,finished_episodes,my_indices
         if rudder_eval:
             return log, finished_episodes
         return log
@@ -501,7 +509,7 @@ class RudderImitation(object):
 
             train_data = [status['i'], status['num_frames'], fps, total_ellapsed_time,
                           log["entropy"], log["policy_loss"], log["accuracy"], log["main_loss"],
-                          log["aux_loss"],log["grad_norm"]]
+                          log["aux_loss"], log["grad_norm"]]
 
             logger.info(
                 "U {} | F {:06} | FPS {:04.0f} | D {} | H {:.3f} | pL {: .3f} | A {: .3f}, mainL {: .5f}"

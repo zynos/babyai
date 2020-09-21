@@ -1,10 +1,7 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from torch.autograd import Variable
 from torch.distributions.categorical import Categorical
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
-import babyai.rl
 from babyai.rl.utils.supervised_losses import required_heads
 
 
@@ -41,12 +38,42 @@ class ExpertControllerFiLM(nn.Module):
         return out
 
 
+from abc import abstractmethod, abstractproperty
+import torch.nn as nn
+import torch.nn.functional as F
+
+# copied these to avoid circular dependency
+class MyACModel:
+    recurrent = False
+
+    @abstractmethod
+    def __init__(self, obs_space, action_space):
+        pass
+
+    @abstractmethod
+    def forward(self, obs):
+        pass
+
+
+class MyRecurrentACModel(MyACModel):
+    recurrent = True
+
+    @abstractmethod
+    def forward(self, obs, memory):
+        pass
+
+    @property
+    @abstractmethod
+    def memory_size(self):
+        pass
+
+
 # copy from babyAI model, slightly modified
-class ACModel(nn.Module, babyai.rl.RecurrentACModel):
+class ACModel(nn.Module, MyRecurrentACModel):
     def __init__(self, obs_space, action_space,
                  image_dim=128, memory_dim=128, instr_dim=128,
                  use_instr=False, lang_model="gru", use_memory=False, arch="cnn1",
-                 aux_info=None,add_actions_to_lstm=True,add_actions_to_film=True):
+                 aux_info=None, add_actions_to_lstm=True, add_actions_to_film=True):
         super().__init__()
 
         # Decide which components are enabled
@@ -117,11 +144,9 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
         # Define memory
         if self.use_memory:
             if self.add_actions_to_lstm:
-                self.memory_rnn = nn.LSTMCell(self.image_dim+action_space.n, self.memory_dim)
+                self.memory_rnn = nn.LSTMCell(self.image_dim + action_space.n, self.memory_dim)
             else:
                 self.memory_rnn = nn.LSTMCell(self.image_dim, self.memory_dim)
-
-
 
         # Resize image embedding
         self.embedding_size = self.semi_memory_size
@@ -135,7 +160,7 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
                 num_module = int(arch[(arch.rfind('_') + 1):])
             self.controllers = []
             if self.add_actions_to_film:
-                embedding_input_dim = self.final_instr_dim+self.action_space.n
+                embedding_input_dim = self.final_instr_dim + self.action_space.n
             else:
                 embedding_input_dim = self.final_instr_dim
 
@@ -152,7 +177,7 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
                 self.add_module('FiLM_Controler_' + str(ni), mod)
 
         # Define actor's model
-        self.embedding_with_action_size = self.embedding_size+self.action_space.n
+        self.embedding_with_action_size = self.embedding_size + self.action_space.n
         self.actor = nn.Sequential(
             nn.Linear(self.embedding_size, 64),
             nn.Tanh(),
@@ -257,7 +282,7 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
         x = x.reshape(x.shape[0], -1)
 
         if self.add_actions_to_lstm:
-            x = torch.cat([x,one_hot_actions],dim=1)
+            x = torch.cat([x, one_hot_actions], dim=1)
 
         if self.use_memory:
             hidden = (memory[:, :self.semi_memory_size], memory[:, self.semi_memory_size:])
