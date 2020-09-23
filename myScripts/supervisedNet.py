@@ -147,6 +147,8 @@ class Net(nn.Module):
         else:
             self.lstm = nn.LSTM(self.combined_input_dim, self.rudder_lstm_out, batch_first=True)
 
+        self.apply(initialize_parameters)
+
     def lambda_replace_func(self, x):
         return x
 
