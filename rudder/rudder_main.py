@@ -104,16 +104,16 @@ class Rudder:
         qualities = []
         full_predictions = []
         last_timestep_prediction = []
-        for finished_episode in finished_episodes:
+        losses = []
+        last_rewards = []
+        for i,finished_episode in enumerate(finished_episodes):
             final_loss, (main_loss, aux_loss), quality, orig_rewards, predictions = self.get_loss_from_finished_episode(
                 finished_episode)
             full_predictions.append(predictions.unsqueeze(0))
             last_timestep_prediction.append(predictions[-1].item())
             qualities.append(np.clip(quality, 0.0, 0.5))
 
-        losses = []
-        last_rewards = []
-        for index in indices:
+            index = indices[i]
             complete_episode = episodes[index[0]]
             index_in_buffer = index[1]
             loss = final_loss.detach().item()

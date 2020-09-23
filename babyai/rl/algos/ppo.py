@@ -82,7 +82,7 @@ class PPOAlgo(BaseAlgo):
                 batch_policy_loss = 0
                 batch_value_loss = 0
                 batch_loss = 0
-                batch_rud_val_loss = torch.tensor(0,device=self.device)
+                batch_rud_val_loss = torch.tensor(0.0,device=self.device)
 
                 # Initialize memory
 
