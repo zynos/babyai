@@ -97,6 +97,7 @@ class BaseAlgo(ABC):
 
         self.mask = torch.ones(shape[1], device=self.device)
         self.masks = torch.zeros(*shape, device=self.device)
+        self.dones = torch.zeros(*shape, device=self.device)
         self.actions = torch.zeros(*shape, device=self.device, dtype=torch.int)
         self.values = torch.zeros(*shape, device=self.device)
         self.rudder_values = torch.zeros(*shape, device=self.device)
@@ -121,12 +122,15 @@ class BaseAlgo(ABC):
         self.log_num_frames = [0] * self.num_procs
 
         # RUDDER changes
-        self.use_rudder = False
-        # self.rudder = Rudder(self.num_procs, acmodel.obs_space,
+        self.use_rudder = True
+        # if self.use_rudder:
+        #     assert self.num_frames_per_proc == self.recurrence
+            # self.rudder = Rudder(self.num_procs, acmodel.obs_space,
         #                      acmodel.instr_dim, acmodel.memory_dim, acmodel.image_dim,
         #                      acmodel.action_space.n, self.device)
-        self.rudder = Rudder(self.num_procs, self.device,40,
-                             acmodel.instr_dim, acmodel.memory_dim, acmodel.image_dim,lr)
+        self.rudder = Rudder(self.num_procs, self.device, 40,
+                             acmodel.instr_dim, acmodel.memory_dim, acmodel.image_dim, lr,self)
+
         # self.ctx=mp.get_context("spawn")
         # self.queue=self.ctx.Queue()
         # self.async_func=start_background_process
@@ -135,49 +139,47 @@ class BaseAlgo(ABC):
         self.queue_into_rudder = None
         self.queue_back_from_rudder = None
 
-    def update_rudder_and_rescale_rewards(self,obs, update_nr, i, queue_into_rudder, queue_back_from_rudder, embedding,
-                                          action, rewards, done,
-                                          instr, image, value):
-        ### SYNCHRONOUS
-        # embeddings,actions,rewards,dones,instructions,images
-        rudder_loss, last_ts_pred, full_pred = 0.0, 0.0, 0.0
-        debug = update_nr >= 6 and i >= 15
-        debug = False
-        rewards=rewards/20
-
-
-        self.rudder.add_timestep_data(debug, queue_into_rudder, embedding, action, rewards, done,
-                                      instr, image, value,obs)
-        # if debug:
-        #     print("after add_timestep_data", i)
-        # if update_nr == 6 and i == 14:
-        #     print("d")
-        # #
-        if self.rudder.first_training_done:
-            # print(i,image.shape)
-            #     ret=self.rudder.predict_reward(embedding, action, rewards, done,
-            #                                                  instr,
-            #                                                  image)
-            ret = self.rudder.new_predict_reward(done, i)
-            if ret is not None:
-                ret=ret*20
-                # ret=torch.clamp(ret,-10.0,10.0)
-                self.rudder_rewards = ret.transpose(0, 1)
-        if self.rudder.replay_buffer.buffer_full() and self.rudder.replay_buffer.encountered_different_returns() and i == 39:
-            rudder_loss, last_ts_pred, full_pred = self.rudder.train_full_buffer()
-            self.rudder.first_training_done = True
-            nonzeros = np.count_nonzero(self.rudder.replay_buffer.fast_returns)
-            percent = nonzeros/self.rudder.replay_buffer.max_size
-            self.rudder.replay_buffer.nonzero_percent = percent
-            print('non zero returns and percent', nonzeros,percent)
-
-            # print(ret)
-            # self.rudder_rewards[i] = ret
-        self.rudder.replay_buffer.init_process_data(self.rudder.replay_buffer.procs_to_init, i)
-        #     # print("rudder rewards")
-
-
-        return rudder_loss, last_ts_pred, full_pred
+    # def update_rudder_and_rescale_rewards(self, obs, update_nr, i, queue_into_rudder, queue_back_from_rudder, embedding,
+    #                                       action, rewards, done,
+    #                                       instr, image, value):
+    #     ### SYNCHRONOUS
+    #     # embeddings,actions,rewards,dones,instructions,images
+    #     rudder_loss, last_ts_pred, full_pred = 0.0, 0.0, 0.0
+    #     debug = update_nr >= 6 and i >= 15
+    #     debug = False
+    #     rewards = rewards / 20
+    #
+    #     self.rudder.add_timestep_data(debug, queue_into_rudder, embedding, action, rewards, done,
+    #                                   instr, image, value, obs)
+    #     # if debug:
+    #     #     print("after add_timestep_data", i)
+    #     # if update_nr == 6 and i == 14:
+    #     #     print("d")
+    #     # #
+    #     if self.rudder.first_training_done:
+    #         # print(i,image.shape)
+    #         #     ret=self.rudder.predict_reward(embedding, action, rewards, done,
+    #         #                                                  instr,
+    #         #                                                  image)
+    #         ret = self.rudder.new_predict_reward(done, i)
+    #         if ret is not None:
+    #             ret = ret * 20
+    #             # ret=torch.clamp(ret,-10.0,10.0)
+    #             self.rudder_rewards = ret.transpose(0, 1)
+    #     if self.rudder.replay_buffer.buffer_full() and self.rudder.replay_buffer.encountered_different_returns() and i == 39:
+    #         rudder_loss, last_ts_pred, full_pred = self.rudder.train_full_buffer()
+    #         self.rudder.first_training_done = True
+    #         nonzeros = np.count_nonzero(self.rudder.replay_buffer.fast_returns)
+    #         percent = nonzeros / self.rudder.replay_buffer.max_size
+    #         self.rudder.replay_buffer.nonzero_percent = percent
+    #         print('non zero returns and percent', nonzeros, percent)
+    #
+    #         # print(ret)
+    #         # self.rudder_rewards[i] = ret
+    #     self.rudder.replay_buffer.init_process_data(self.rudder.replay_buffer.procs_to_init, i)
+    #     #     # print("rudder rewards")
+    #
+    #     return rudder_loss, last_ts_pred, full_pred
 
     def collect_experiences(self, update_nr):
         """Collects rollouts and computes advantages.
@@ -238,6 +240,7 @@ class BaseAlgo(ABC):
             self.memory = memory
 
             self.masks[i] = self.mask
+            self.dones[i] = torch.tensor(done, device=self.device, dtype=torch.float)
             self.mask = 1 - torch.tensor(done, device=self.device, dtype=torch.float)
             self.actions[i] = action
             self.values[i] = value
@@ -251,13 +254,13 @@ class BaseAlgo(ABC):
                 self.rewards[i] = torch.tensor(reward, device=self.device)
             # print("checkpoint 7")
             # RUDDER entry
-            rudder_loss, last_ts_pred, last_rew_mean = 0,0,0
-            if self.use_rudder:
-                rudder_loss, last_ts_pred, last_rew_mean = \
-                    self.update_rudder_and_rescale_rewards(obs,update_nr, i, self.queue_into_rudder,
-                                                           self.queue_back_from_rudder, embedding,
-                                                           action, self.rewards[i], done, preprocessed_obs.instr,
-                                                           preprocessed_obs.image, value)
+            rudder_loss, last_ts_pred, last_rew_mean = 0, 0, 0
+            # if self.use_rudder:
+            # rudder_loss, last_ts_pred, last_rew_mean = \
+            #     self.update_rudder_and_rescale_rewards(obs,update_nr, i, self.queue_into_rudder,
+            #                                            self.queue_back_from_rudder, embedding,
+            #                                            action, self.rewards[i], done, preprocessed_obs.instr,
+            #                                            preprocessed_obs.image, value)
 
             self.log_probs[i] = dist.log_prob(action)
 
@@ -283,6 +286,13 @@ class BaseAlgo(ABC):
             # print("checkpoint 8")
 
         # Add advantage and return to experiences
+        if self.use_rudder:
+            self.rudder.fill_buffer(self.masks.clone(), self.rewards.clone(), self.values.clone(), self.actions.clone(), self.obss,self.dones.clone())
+            if self.rudder.replay_buffer.buffer_full() and self.rudder.replay_buffer.encountered_different_returns():
+                self.rudder.train_on_buffer_data()
+                self.rudder_rewards = self.rudder.predict_new_rewards(self.obss,self.masks,self.rewards,self.values,self.actions,self.dones)
+                # self.rudder_rewards *= 20
+
 
         preprocessed_obs = self.preprocess_obss(self.obs, device=self.device)
         with torch.no_grad():
@@ -324,7 +334,7 @@ class BaseAlgo(ABC):
         exps.value = self.values.transpose(0, 1).reshape(-1)
         exps.rudder_value = self.rudder_values.transpose(0, 1).reshape(-1)
         exps.rudder_value = torch.clamp(exps.rudder_value, torch.min(exps.value).item(),
-                                            torch.max(exps.value).item())
+                                        torch.max(exps.value).item())
         exps.reward = self.rewards.transpose(0, 1).reshape(-1)
         exps.advantage = self.advantages.transpose(0, 1).reshape(-1)
         exps.rudder_advantage = self.rudder_advantages.transpose(0, 1).reshape(-1)
@@ -336,16 +346,16 @@ class BaseAlgo(ABC):
                                                                                        rud_orig_adv,
                                                                                        rud_rud_adv))
         # a =a_o(1-qualityv) +a_r * quality
-        exps.rudder_advantage= torch.clamp(exps.rudder_advantage,torch.min(exps.advantage).item(),
-                                           torch.max(exps.advantage).item())
+        exps.rudder_advantage = torch.clamp(exps.rudder_advantage, torch.min(exps.advantage).item(),
+                                            torch.max(exps.advantage).item())
         if self.use_rudder:
             exps.advantage = exps.advantage * (
                     1 - self.rudder.current_quality) + exps.rudder_advantage * self.rudder.current_quality
         exps.returnn = exps.value + exps.advantage
 
         exps.rudder_return = exps.rudder_value + exps.rudder_advantage
-        exps.rudder_return = torch.clamp(exps.rudder_return,torch.min(exps.returnn).item(),
-                                           torch.max(exps.returnn).item())
+        exps.rudder_return = torch.clamp(exps.rudder_return, torch.min(exps.returnn).item(),
+                                         torch.max(exps.returnn).item())
         exps.log_prob = self.log_probs.transpose(0, 1).reshape(-1)
 
         if self.aux_info:
@@ -360,12 +370,12 @@ class BaseAlgo(ABC):
         keep = max(self.log_done_counter, self.num_procs)
 
         log = {
-            "rud_rud_rew":torch.mean(self.rudder_rewards),
-            "rud_orig_val":rud_orig_val,
-            "rud_rud_val":rud_rud_val,
-            "rud_orig_adv":rud_orig_adv,
-            "rud_rud_adv":rud_rud_adv,
-            "rud_return":torch.mean( exps.rudder_return),
+            "rud_rud_rew": torch.mean(self.rudder_rewards),
+            "rud_orig_val": rud_orig_val,
+            "rud_rud_val": rud_rud_val,
+            "rud_orig_adv": rud_orig_adv,
+            "rud_rud_adv": rud_rud_adv,
+            "rud_return": torch.mean(exps.rudder_return),
             "return_per_episode": self.log_return[-keep:],
             "reshaped_return_per_episode": self.log_reshaped_return[-keep:],
             "num_frames_per_episode": self.log_num_frames[-keep:],

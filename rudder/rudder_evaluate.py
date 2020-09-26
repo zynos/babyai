@@ -35,12 +35,12 @@ def build_loss_str(e):
                                                                                              float(e[4][-1]), e[5])
 
 
-def transform_data_for_loss_calculation(predictions, orig_rewards, dones, il_learn):
-    my_done_step = torch.from_numpy(np.array(dones).astype(bool)).float().to(il_learn.device).flatten()
+def transform_data_for_loss_calculation(predictions, orig_rewards, dones, device):
+    my_done_step = torch.from_numpy(np.array(dones).astype(bool)).float().to(device).flatten()
     reward_repeated_step = orig_rewards[-1].expand(len(dones))
     assert len(reward_repeated_step) == len(dones)
-    predictions = torch.tensor(predictions, device=il_learn.device)
-    orig_rewards = torch.tensor(orig_rewards, device=il_learn.device)
+    predictions = torch.tensor(predictions, device=device)
+    orig_rewards = torch.tensor(orig_rewards, device=device)
     return reward_repeated_step, my_done_step, predictions, orig_rewards
 
 
