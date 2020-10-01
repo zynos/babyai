@@ -230,8 +230,6 @@ class Rudder:
         # For the first timestep we will take (0-predictions[:, :1]) as redistributed reward
         redistributed_reward = torch.cat([predictions[:, :1], redistributed_reward], dim=1)
         returns = rewards.sum(dim=1)
-        if returns > 0:
-            pass
         predicted_returns = redistributed_reward.sum(dim=1)
         prediction_error = returns - predicted_returns
 
@@ -253,6 +251,42 @@ class Rudder:
         out_rewards = torch.stack(out_rewards)
         count = Counter(best_actions)
         best_action_strings = [self.action_dict[a[0]] for a in count.most_common(3)]
+        print("best actions", best_action_strings)
+
+        return out_rewards.transpose(0, 1)
+
+    def predict_new_rewards_batch(self, obs, masks, rewards, values, actions, dones):
+        # rewards = rewards / 20
+        out_rewards = []
+        best_actions = []
+        my_obs = []
+        my_masks = []
+        my_rewards = []
+        my_actions = []
+        my_values = []
+        my_dones = []
+        for i in range(self.nr_procs):
+            masks_, rewards_, values_, actions_, dones_, obs_ = self.get_process_data(i, obs, masks, rewards, values,
+                                                                                      actions, dones)
+            my_obs.append(obs_)
+            my_masks.append(masks_)
+            my_rewards.append(rewards_)
+            my_actions.append(actions_)
+            my_values.append(values_)
+            my_dones.append(dones_)
+        my_obs = np.stack(my_obs)
+        my_masks = torch.stack(my_masks)
+        my_rewards = torch.stack(my_rewards)
+        my_actions = torch.stack(my_actions)
+        my_values = torch.stack(my_values)
+        my_dones = torch.stack(my_dones)
+        predictions = self.feed_single_sequence_to_net(my_obs, my_actions, my_masks,batch=True)
+        redistributed_reward = self.redistribute_reward(predictions, my_rewards)
+        # out_rewards.append(redistributed_reward.squeeze(0))
+        best_actions.extend([my_actions[i][torch.argmax(line)].item() for i,line in enumerate(redistributed_reward)])
+        out_rewards = redistributed_reward
+        count = Counter(best_actions)
+        best_action_strings = [self.action_dict[a[0]] for a in count.most_common(5)]
         print("best actions", best_action_strings)
 
         return out_rewards.transpose(0, 1)
