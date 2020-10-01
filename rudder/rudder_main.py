@@ -113,7 +113,8 @@ class Rudder:
     def feed_single_sequence_to_net(self, obss, actions, masks, is_training=False):
         memories = torch.zeros([len(actions), self.il_learn.acmodel.memory_size], device=self.device)
         memory = torch.zeros(self.il_learn.acmodel.memory_size, device=self.device).unsqueeze(0)
-        actions = torch.tensor([action.to(dtype=torch.long) for action in actions], device=self.device)
+        # actions = torch.tensor([action.to(dtype=torch.long) for action in actions], device=self.device)
+        actions = actions.to(dtype=torch.long) 
         predictions = []
 
         if is_training:
@@ -214,7 +215,7 @@ class Rudder:
         dones[:, -1] = 1
         rewards[:, -1] = torch.where(rewards[:, -1] == 0, values[:, -1], rewards[:, -1])
         repeated_rewards = self.create_repeated_reward(rewards)
-        final_loss, (aux, main, quality) = self.calculate_batch_loss(rewards, repeated_rewards,
+        final_loss, (main, aux, quality) = self.calculate_batch_loss(rewards, repeated_rewards,
                                                                      dones, predictions)
         return final_loss, seq_return, (aux, main, predictions, quality)
 
