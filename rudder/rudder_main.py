@@ -139,11 +139,11 @@ class Rudder:
             predictions.append(model_results["value"])
         return torch.cat(predictions)
 
-    def info_print(self, idx, returnn, loss, main, aux, predictions):
+    def info_print(self, idx, returnn, loss, main, aux, predictions,rewards):
         print(
             "sample {} return {:.2f} loss {:.4f}"
-            " mainL {:.4f}  auxL {:.4f} predMax {:.2f}".format(idx, returnn.item(), loss.item(), main.item(),
-                                                               aux.item(), predictions[0].max().item()))
+            " mainL {:.4f}  auxL {:.4f} predMax {:.2f} rewMax {:.2f}".format(idx, returnn.item(), loss.item(), main.item(),
+                                                               aux.item(), predictions[0].max().item(), rewards.max().item()))
 
     def train_on_buffer_data(self):
         bad_quality = True
@@ -166,7 +166,7 @@ class Rudder:
             self.current_quality = np.mean(qualities)
             if False not in qualities_bools:
                 bad_quality = False
-            self.info_print(ids[i], returnn, loss, main, aux, predictions)
+            self.info_print(ids[i], returnn, loss, main, aux, predictions,rewards)
 
     def redistribute_reward(self,predictions,rewards):
         # Use the differences of predictions as redistributed reward
@@ -202,7 +202,7 @@ class Rudder:
         return out_rewards.transpose(0, 1)
 
     def get_loss_for_sequence(self, obs, masks, rewards, actions, values, dones,is_training=False):
-        rewards = rewards.unsqueeze(0)
+        rewards = rewards.unsqueeze(0).clone()
         values = values.unsqueeze(0)
         dones = dones.unsqueeze(0)
         # overwrite missing rewards with values ( see paper appendix A 4.2.3)#

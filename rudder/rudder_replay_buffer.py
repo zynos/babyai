@@ -68,7 +68,7 @@ class RudderReplayBuffer:
             self.added_episodes += 1
 
     def get_single_sequence(self, nr):
-        return self.obs[nr], self.masks[nr], self.rewards[nr], self.actions[nr], self.values[nr], self.dones[nr]
+        return self.obs[nr], self.masks[nr], self.rewards[nr].clone(), self.actions[nr], self.values[nr], self.dones[nr]
 
     def get_combined_ranks(self, losses, returns):
         # we need the deviation of the mean return per episode
