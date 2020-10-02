@@ -9,7 +9,7 @@ class RudderPlotter:
         self.total_pics = 0
         self.out_image_height = 10.8
         self.out_image_width = 19.2
-        self.il_learn = il_learn
+        # self.il_learn = il_learn
 
         Path("myPics").mkdir(parents=True, exist_ok=True)
 

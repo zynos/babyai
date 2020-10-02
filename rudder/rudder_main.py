@@ -44,7 +44,7 @@ class Rudder:
         self.device = device
         self.frames_per_proc = frames_per_proc
         self.base_rl_algo = base_rl_algo
-        self.lr = 1e-4
+        self.lr = lr
         self.optimizer = Adam(lr=self.lr, params=self.il_learn.acmodel.parameters())
         self.action_dict = {0: "turn left", 1: "turn right", 2: "move forward", 3: "pick up", 4: "drop", 5: "toggle",
                             6: "done"}
@@ -99,9 +99,9 @@ class Rudder:
                                                                                       is_training=False)
         for i in range(my_actions.shape[0]):
             masks_, rewards_, values_, actions_, obs_, seq_return_, final_loss, dones_ = my_masks[i], my_rewards[i], \
-                                                                                        my_values[i], my_actions[i], \
-                                                                                        my_obs[i], seq_return[i], loss[
-                                                                                            i], my_dones[i]
+                                                                                         my_values[i], my_actions[i], \
+                                                                                         my_obs[i], seq_return[i], loss[
+                                                                                             i], my_dones[i]
             if not self.replay_buffer.buffer_full():
                 idx = i
             else:
@@ -199,11 +199,13 @@ class Rudder:
 
         return torch.cat(predictions, dim=-1)
 
-    def info_print(self, idx, returnn, loss, main, aux, predictions,rewards):
+    def info_print(self, idx, returnn, loss, main, aux, predictions, rewards):
         print(
             "sample {} return {:.2f} loss {:.4f}"
-            " mainL {:.4f}  auxL {:.4f} predMax {:.2f} rewMax {:.2f}".format(idx, returnn.item(), loss.item(), main.item(),
-                                                               aux.item(), predictions[0].max().item(),rewards.max().item()))
+            " mainL {:.4f}  auxL {:.4f} predMax {:.2f} rewMax {:.2f}".format(idx, returnn.item(), loss.item(),
+                                                                             main.item(),
+                                                                             aux.item(), predictions[0].max().item(),
+                                                                             rewards.max().item()))
 
     def get_batch_data(self):
         my_obs = []
@@ -231,6 +233,7 @@ class Rudder:
 
     def train_on_buffer_data(self):
         bad_quality = True
+        losses = []
         while bad_quality:
             qualities_bools = set()
             qualities = []
@@ -244,14 +247,19 @@ class Rudder:
                     self.replay_buffer.losses[ids[i]] = loss[i].detach().clone().item()
                     qualities_bools.add(quality[i].item() > 0)
                     qualities.append(np.clip(quality[i].item(), 0.0, 0.5))
+
                 self.optimizer.zero_grad()
                 loss.mean().backward()
+                grad_norm = sum(
+                    p.grad.data.norm(2) ** 2 for p in self.il_learn.acmodel.parameters() if p.grad is not None) ** 0.5
                 self.optimizer.step()
+                losses.append(loss.mean().item())
 
             self.current_quality = np.mean(qualities)
             if False not in qualities_bools:
                 bad_quality = False
-            self.info_print(ids[i], seq_return[i], loss[i], main[i], aux[i], predictions[i],my_rewards[i])
+            self.info_print(ids[i], seq_return[i], loss[i], main[i], aux[i], predictions[i], my_rewards[i])
+        return np.mean(losses), grad_norm
 
     def redistribute_reward(self, predictions, rewards):
         # Use the differences of predictions as redistributed reward

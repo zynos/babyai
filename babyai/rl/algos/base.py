@@ -289,7 +289,8 @@ class BaseAlgo(ABC):
         if self.use_rudder:
             self.rudder.fill_buffer_batch(self.masks.clone(), self.rewards.clone(), self.values.clone(), self.actions.clone(), self.obss,self.dones.clone())
             if self.rudder.replay_buffer.buffer_full() and self.rudder.replay_buffer.encountered_different_returns():
-                self.rudder.train_on_buffer_data()
+                rudder_loss, rud_grad_norm = self.rudder.train_on_buffer_data()
+                self.rudder.grad_norm = rud_grad_norm
                 self.rudder_rewards = self.rudder.predict_new_rewards_batch(self.obss,self.masks,self.rewards,self.values,self.actions,self.dones)
                 # self.rudder_rewards *= 20
 
