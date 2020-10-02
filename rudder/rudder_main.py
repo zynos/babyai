@@ -199,11 +199,11 @@ class Rudder:
 
         return torch.cat(predictions, dim=-1)
 
-    def info_print(self, idx, returnn, loss, main, aux, predictions):
+    def info_print(self, idx, returnn, loss, main, aux, predictions,rewards):
         print(
             "sample {} return {:.2f} loss {:.4f}"
-            " mainL {:.4f}  auxL {:.4f} predMax {:.2f}".format(idx, returnn.item(), loss.item(), main.item(),
-                                                               aux.item(), predictions[0].max().item()))
+            " mainL {:.4f}  auxL {:.4f} predMax {:.2f} rewMax {:.2f}".format(idx, returnn.item(), loss.item(), main.item(),
+                                                               aux.item(), predictions[0].max().item(),rewards.max().item()))
 
     def get_batch_data(self):
         my_obs = []
@@ -251,7 +251,7 @@ class Rudder:
             self.current_quality = np.mean(qualities)
             if False not in qualities_bools:
                 bad_quality = False
-            self.info_print(ids[i], seq_return[i], loss[i], main[i], aux[i], predictions[i])
+            self.info_print(ids[i], seq_return[i], loss[i], main[i], aux[i], predictions[i],my_rewards[i])
 
     def redistribute_reward(self, predictions, rewards):
         # Use the differences of predictions as redistributed reward
@@ -328,7 +328,7 @@ class Rudder:
 
     def get_loss_for_batch(self, obs, masks, rewards, actions, values, dones, is_training=False):
         predictions = self.feed_single_sequence_to_net(obs, actions, masks, is_training, True)
-        rewards = rewards[:, :predictions.shape[1]]
+        rewards = rewards[:, :predictions.shape[1]].clone()
         seq_return = torch.sum(rewards, dim=1)
         values = values[:, :predictions.shape[1]]
         # dones = self.flip_zeros_and_ones(masks).unsqueeze(0)
