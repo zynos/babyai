@@ -195,7 +195,7 @@ if __name__ == '__main__':
     logger.info(args)
     logger.info("CUDA available: {}".format(torch.cuda.is_available()))
     logger.info(acmodel)
-
+    logger.info(algo.rudder.il_learn.acmodel)
     # Train model
 
     total_start_time = time.time()

@@ -28,6 +28,7 @@ class NonParsedDummyArgs:
 class Rudder:
     def __init__(self, nr_procs, device, frames_per_proc, instr_dim, memory_dim, image_dim, lr, base_rl_algo):
 
+        self.max_grad_norm = 0.5
         self.mu = 1
         self.quality_threshold = 0.8
         dummy_args = NonParsedDummyArgs(instr_dim, memory_dim, image_dim, lr)
@@ -134,10 +135,11 @@ class Rudder:
     def calculate_batch_loss(self, rewards, repeated_rewards, done, predictions):
         # dont use the standard mean for main loss because many zeros in batch will decrease it
         # take only the return (== reward in this environment) into account
-        diff = ((rewards.detach().clone() - predictions.detach().clone()) * done).sum() / torch.sum(done, dim=-1)
+        diff = ((rewards.detach().clone() - predictions.detach().clone()) * done).sum(dim=1) / torch.sum(done, dim=-1)
         quality = self.calc_quality_batch(diff)
         assert (torch.sum(done, dim=-1) > 0).all()
-        main_loss = (((rewards - predictions) * done) ** 2).sum() / torch.sum(done, dim=-1)
+
+        main_loss = (((rewards - predictions) * done) ** 2).sum(dim=1) / torch.sum(done, dim=-1)
         aux_loss = ((repeated_rewards - predictions) ** 2).mean(dim=1)
         final_loss = main_loss + self.il_learn.aux_loss_multiplier * aux_loss
         return final_loss, (main_loss.detach().clone(), aux_loss.detach().clone(), quality)
@@ -250,6 +252,7 @@ class Rudder:
 
                 self.optimizer.zero_grad()
                 loss.mean().backward()
+                # torch.nn.utils.clip_grad_norm_(self.il_learn.acmodel.parameters(), self.max_grad_norm)
                 grad_norm = sum(
                     p.grad.data.norm(2) ** 2 for p in self.il_learn.acmodel.parameters() if p.grad is not None) ** 0.5
                 self.optimizer.step()
