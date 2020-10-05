@@ -125,6 +125,7 @@ if __name__ == '__main__':
         ctx = mp.get_context('spawn')
         algo.ctx = ctx
         # algo.pool = algo.ctx.Pool(1, maxtasksperchild=1)
+        algo.model_name = args.model
         algo.queue_into_rudder = ctx.Queue()
         algo.queue_back_from_rudder = ctx.Queue()
         algo.parallel_train_func = asyncTrain.start_background_process

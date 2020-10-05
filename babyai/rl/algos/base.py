@@ -59,6 +59,7 @@ class BaseAlgo(ABC):
 
         self.env = ParallelEnv(envs)
         self.acmodel = acmodel
+        self.model_name = "default"
         self.acmodel.train()
         self.num_frames_per_proc = num_frames_per_proc
         self.discount = discount
@@ -125,11 +126,11 @@ class BaseAlgo(ABC):
         self.use_rudder = True
         # if self.use_rudder:
         #     assert self.num_frames_per_proc == self.recurrence
-            # self.rudder = Rudder(self.num_procs, acmodel.obs_space,
+        # self.rudder = Rudder(self.num_procs, acmodel.obs_space,
         #                      acmodel.instr_dim, acmodel.memory_dim, acmodel.image_dim,
         #                      acmodel.action_space.n, self.device)
         self.rudder = Rudder(self.num_procs, self.device, 40,
-                             acmodel.instr_dim, acmodel.memory_dim, acmodel.image_dim, lr,self)
+                             acmodel.instr_dim, acmodel.memory_dim, acmodel.image_dim, lr, self)
 
         # self.ctx=mp.get_context("spawn")
         # self.queue=self.ctx.Queue()
@@ -287,13 +288,20 @@ class BaseAlgo(ABC):
 
         # Add advantage and return to experiences
         if self.use_rudder:
-            self.rudder.fill_buffer_batch(self.masks.clone(), self.rewards.clone(), self.values.clone(), self.actions.clone(), self.obss,self.dones.clone(),update_nr)
+            self.rudder.fill_buffer_batch(self.masks.detach().clone(), self.rewards.detach().clone(),
+                                          self.values.detach().clone(),
+                                          self.actions.detach().clone(), self.obss, self.dones.detach().clone(),
+                                          update_nr,
+                                          self.model_name)
             if self.rudder.replay_buffer.buffer_full() and self.rudder.replay_buffer.encountered_different_returns():
                 rudder_loss, rud_grad_norm = self.rudder.train_on_buffer_data()
                 self.rudder.grad_norm = rud_grad_norm
-                self.rudder_rewards = self.rudder.predict_new_rewards_batch(self.obss,self.masks,self.rewards.clone(),self.values,self.actions,self.dones)
+                self.rudder_rewards = self.rudder.predict_new_rewards_batch(self.obss, self.masks.detach().clone(),
+                                                                            self.rewards.detach().clone(),
+                                                                            self.values.detach().clone(),
+                                                                            self.actions.detach().clone(),
+                                                                            self.dones.detach().clone())
                 self.rudder_rewards *= 20
-
 
         preprocessed_obs = self.preprocess_obss(self.obs, device=self.device)
         with torch.no_grad():

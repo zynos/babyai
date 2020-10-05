@@ -87,7 +87,7 @@ class Rudder:
     #             self.replay_buffer.add_single_sequence(masks_, rewards_, values_, actions_, obs_, seq_return,
     #                                                    final_loss, dones_, idx)
 
-    def fill_buffer_batch(self, masks, rewards, values, actions, obs, dones, update):
+    def fill_buffer_batch(self, masks, rewards, values, actions, obs, dones, update,model_name):
         # # rewards to zero mean unit variance
         rewards = rewards / 20
         # if self.replay_buffer.added_episodes > 0:
@@ -103,7 +103,7 @@ class Rudder:
                                                                                       is_training=False)
         if update % 200 == 0:
             self.visualize_current_reward_redistribution(loss, my_obs, my_actions, my_rewards, aux, main, predictions,
-                                                         update, my_dones)
+                                                         update, my_dones,model_name)
         for i in range(my_actions.shape[0]):
             masks_, rewards_, values_, actions_, obs_, seq_return_, final_loss, dones_ = my_masks[i], my_rewards[i], \
                                                                                          my_values[i], my_actions[i], \
@@ -329,11 +329,11 @@ class Rudder:
         return my_obs, my_actions, my_masks, my_rewards, my_values, my_dones
 
     def visualize_current_reward_redistribution(self, loss, my_obs, my_actions, my_rewards, aux, main, all_predictions,
-                                                update, dones):
+                                                update, dones,model_name_orig):
         for i in range(len(loss))[:10]:
             orig_rewards = my_rewards[i]
             predictions = all_predictions[i]
-            model_name = "update: " + str(update)
+            model_name = model_name_orig+"_" + str(update)
             final_loss, main_loss, aux_loss = loss[i], main[i], aux[i]
             obs = my_obs[i]
             actions = my_actions[i]
