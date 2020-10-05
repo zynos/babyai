@@ -89,7 +89,7 @@ class Rudder:
 
     def fill_buffer_batch(self, masks, rewards, values, actions, obs, dones, update,model_name):
         # # rewards to zero mean unit variance
-        rewards = rewards / 20
+        # rewards = rewards / 20
         # if self.replay_buffer.added_episodes > 0:
         #     rewards = self.minus_one_to_one_scale(rewards, self.replay_buffer.rewards)
         # else:
@@ -254,7 +254,7 @@ class Rudder:
                 for i, idx in enumerate(ids):
                     self.replay_buffer.losses[ids[i]] = loss[i].detach().clone().item()
                     qualities_bools.add(quality[i].item() > 0)
-                    qualities.append(np.clip(quality[i].item(), 0.0, 0.5))
+                    qualities.append(np.clip(quality[i].item(), 0.0, 0.75))
 
                 self.optimizer.zero_grad()
                 loss.mean().backward()
@@ -355,7 +355,7 @@ class Rudder:
                                                       self.il_learn.env, top_titel=loss_str, multi_commands=True)
 
     def predict_new_rewards_batch(self, obs, masks, rewards, values, actions, dones):
-        rewards = rewards / 20
+        # rewards = rewards / 20
         my_obs, my_actions, my_masks, my_rewards, _, _ = self.get_data_for_every_process(obs, masks, rewards, values,
                                                                                          actions, dones)
         predictions = self.feed_single_sequence_to_net(my_obs, my_actions, my_masks, batch=True)

@@ -301,7 +301,7 @@ class BaseAlgo(ABC):
                                                                             self.values.detach().clone(),
                                                                             self.actions.detach().clone(),
                                                                             self.dones.detach().clone())
-                self.rudder_rewards *= 20
+                # self.rudder_rewards *= 20
 
         preprocessed_obs = self.preprocess_obss(self.obs, device=self.device)
         with torch.no_grad():
