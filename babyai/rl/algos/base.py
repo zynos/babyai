@@ -287,12 +287,12 @@ class BaseAlgo(ABC):
 
         # Add advantage and return to experiences
         if self.use_rudder:
-            self.rudder.fill_buffer_batch(self.masks.clone(), self.rewards.clone(), self.values.clone(), self.actions.clone(), self.obss,self.dones.clone())
+            self.rudder.fill_buffer_batch(self.masks.clone(), self.rewards.clone(), self.values.clone(), self.actions.clone(), self.obss,self.dones.clone(),update_nr)
             if self.rudder.replay_buffer.buffer_full() and self.rudder.replay_buffer.encountered_different_returns():
                 rudder_loss, rud_grad_norm = self.rudder.train_on_buffer_data()
                 self.rudder.grad_norm = rud_grad_norm
-                self.rudder_rewards = self.rudder.predict_new_rewards_batch(self.obss,self.masks,self.rewards,self.values,self.actions,self.dones)
-                # self.rudder_rewards *= 20
+                self.rudder_rewards = self.rudder.predict_new_rewards_batch(self.obss,self.masks,self.rewards.clone(),self.values,self.actions,self.dones)
+                self.rudder_rewards *= 20
 
 
         preprocessed_obs = self.preprocess_obss(self.obs, device=self.device)

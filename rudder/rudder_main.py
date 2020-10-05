@@ -2,8 +2,11 @@ from collections import Counter
 
 import numpy as np
 import torch
+from myScripts.ReplayBuffer import ProcessData
+from rudder.rudder_evaluate import build_loss_str
 
 from rudder.rudder_imitation_learning import RudderImitation
+from rudder.rudder_plot import RudderPlotter
 from rudder.rudder_replay_buffer import RudderReplayBuffer
 from torch.optim import Adam
 
@@ -84,9 +87,9 @@ class Rudder:
     #             self.replay_buffer.add_single_sequence(masks_, rewards_, values_, actions_, obs_, seq_return,
     #                                                    final_loss, dones_, idx)
 
-    def fill_buffer_batch(self, masks, rewards, values, actions, obs, dones):
+    def fill_buffer_batch(self, masks, rewards, values, actions, obs, dones, update):
         # # rewards to zero mean unit variance
-        # rewards = rewards / 20
+        rewards = rewards / 20
         # if self.replay_buffer.added_episodes > 0:
         #     rewards = self.minus_one_to_one_scale(rewards, self.replay_buffer.rewards)
         # else:
@@ -98,6 +101,9 @@ class Rudder:
         loss, seq_return, (aux, main, predictions, quality) = self.get_loss_for_batch(my_obs, my_masks, my_rewards,
                                                                                       my_actions, my_values, my_dones,
                                                                                       is_training=False)
+        if update % 200 == 0:
+            self.visualize_current_reward_redistribution(loss, my_obs, my_actions, my_rewards, aux, main, predictions,
+                                                         update, my_dones)
         for i in range(my_actions.shape[0]):
             masks_, rewards_, values_, actions_, obs_, seq_return_, final_loss, dones_ = my_masks[i], my_rewards[i], \
                                                                                          my_values[i], my_actions[i], \
@@ -322,8 +328,34 @@ class Rudder:
         my_dones = torch.stack(my_dones)
         return my_obs, my_actions, my_masks, my_rewards, my_values, my_dones
 
+    def visualize_current_reward_redistribution(self, loss, my_obs, my_actions, my_rewards, aux, main, all_predictions,
+                                                update, dones):
+        for i in range(len(loss))[:10]:
+            orig_rewards = my_rewards[i]
+            predictions = all_predictions[i]
+            model_name = "update: " + str(update)
+            final_loss, main_loss, aux_loss = loss[i], main[i], aux[i]
+            obs = my_obs[i]
+            actions = my_actions[i]
+            episode = ProcessData()
+            done = dones[i]
+            episode.rewards = orig_rewards
+            episode.instructions = [e["mission"] for e in obs]
+            episode.images = torch.tensor([e["image"] for e in obs], device=self.il_learn.device)
+            episode.actions = actions
+            loss_str = build_loss_str((final_loss, main_loss, aux_loss, predictions, orig_rewards, model_name))
+            rudder_plotter = RudderPlotter(None)
+            output_path_prefix = "newEval/"
+            # model pred contains (predictions.squeeze(), model_file_name[:-3], (loss, main_loss, aux_loss))
+            model_predictions = [(predictions, model_name, (final_loss, (main_loss, aux_loss)))]
+            rudder_plotter.plot_reward_redistribution(str(torch.sum(episode.rewards).item()),
+                                                      str(torch.sum(done).item()) + "_" + str(i),
+                                                      output_path_prefix + model_name + "_Eval/",
+                                                      model_predictions, episode,
+                                                      self.il_learn.env, top_titel=loss_str, multi_commands=True)
+
     def predict_new_rewards_batch(self, obs, masks, rewards, values, actions, dones):
-        # rewards = rewards / 20
+        rewards = rewards / 20
         my_obs, my_actions, my_masks, my_rewards, _, _ = self.get_data_for_every_process(obs, masks, rewards, values,
                                                                                          actions, dones)
         predictions = self.feed_single_sequence_to_net(my_obs, my_actions, my_masks, batch=True)

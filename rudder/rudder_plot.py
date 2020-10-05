@@ -31,7 +31,7 @@ class RudderPlotter:
         return actions[i]
 
     def plot_reward_redistribution(self, start, stop, path_start, model_predictions, short_episode, env,
-                                   top_titel=None):
+                                   top_titel=None,multi_commands=False):
         # loss, returns, quality, predictions = self.rudder.feed_network(short_episode)
         if not isinstance(short_episode.instructions[0],str):
             command = {"put": 1, "the": 2, "grey": 3, "key": 4, "next": 5, "to": 6, "red": 7, "box": 8, "yellow": 9,
@@ -43,6 +43,9 @@ class RudderPlotter:
             command = short_episode.instructions[0]
         print(command)
         for i, image in enumerate(short_episode.images):
+            if multi_commands:
+                command = short_episode.instructions[i]
+
             # plt.figure(figsize=(19.20,9.83))
 
             # subplot(r,c) provide the no. of rows and columns
