@@ -208,7 +208,7 @@ class Rudder:
         return torch.cat(predictions, dim=-1)
 
     def info_print(self, idx, returnn, loss, main, aux, predictions, rewards,done):
-        diff_at_done = ((rewards - predictions)**2)[done == 1]
+        diff_at_done = ((rewards[:len(predictions)] - predictions)**2)[done[:len(predictions)] == 1]
         diff_at_done = ["{:.2f}".format(e.item()) for e in diff_at_done ]
         print(
             "sample {} return {:.2f} loss {:.4f}"
