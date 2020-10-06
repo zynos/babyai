@@ -157,7 +157,7 @@ if __name__ == '__main__':
               + ["success_rate"]
               + ["num_frames_" + stat for stat in ['mean', 'std', 'min', 'max']]
               + ["entropy", "value", "policy_loss", "value_loss", "loss", "grad_norm"]
-              + ["rud_loss","rudder_pred_last","rud_last_rewards","rud_quality",
+              + ["rud_loss","rud_aux","rudder_pred_last","rud_last_rewards","rud_quality",
                  "rud_grad_norm","rud_orig_val","rud_rud_val","rud_orig_adv","rud_rud_adv","rud_return",
                  "rud_rud_val_loss","rud_rud_rew"])
 

@@ -255,7 +255,7 @@ class BaseAlgo(ABC):
                 self.rewards[i] = torch.tensor(reward, device=self.device)
             # print("checkpoint 7")
             # RUDDER entry
-            rudder_loss, last_ts_pred, last_rew_mean = 0, 0, 0
+            rudder_loss,rudder_aux, last_ts_pred, last_rew_mean = 0, 0, 0, 0
             # if self.use_rudder:
             # rudder_loss, last_ts_pred, last_rew_mean = \
             #     self.update_rudder_and_rescale_rewards(obs,update_nr, i, self.queue_into_rudder,
@@ -294,7 +294,7 @@ class BaseAlgo(ABC):
                                           update_nr,
                                           self.model_name)
             if self.rudder.replay_buffer.buffer_full() and self.rudder.replay_buffer.encountered_different_returns():
-                rudder_loss, rud_grad_norm = self.rudder.train_on_buffer_data()
+                rudder_loss,rudder_aux, rud_grad_norm = self.rudder.train_on_buffer_data()
                 self.rudder.grad_norm = rud_grad_norm
                 self.rudder_rewards = self.rudder.predict_new_rewards_batch(self.obss, self.masks.detach().clone(),
                                                                             self.rewards.detach().clone(),
@@ -391,6 +391,7 @@ class BaseAlgo(ABC):
             "num_frames": self.num_frames,
             "episodes_done": self.log_done_counter,
             "rudder_loss": rudder_loss,
+            "rudder_aux": rudder_aux,
             "rudder_pred_last": last_ts_pred,
             "LastRew_mean": last_rew_mean,
         }

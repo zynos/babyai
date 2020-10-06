@@ -207,13 +207,15 @@ class Rudder:
 
         return torch.cat(predictions, dim=-1)
 
-    def info_print(self, idx, returnn, loss, main, aux, predictions, rewards):
+    def info_print(self, idx, returnn, loss, main, aux, predictions, rewards,done):
+        diff_at_done = ((rewards - predictions)**2)[done == 1]
+        diff_at_done = ["{:.2f}".format(e.item()) for e in diff_at_done ]
         print(
             "sample {} return {:.2f} loss {:.4f}"
-            " mainL {:.4f}  auxL {:.4f} predMax {:.2f} rewMax {:.2f}".format(idx, returnn.item(), loss.item(),
+            " mainL {:.4f}  auxL {:.4f} predMax {:.2f} rewMax {:.2f} diffAtDone {}".format(idx, returnn.item(), loss.item(),
                                                                              main.item(),
                                                                              aux.item(), predictions[0].max().item(),
-                                                                             rewards.max().item()))
+                                                                             rewards.max().item(),diff_at_done))
 
     def get_batch_data(self):
         my_obs = []
@@ -242,6 +244,7 @@ class Rudder:
     def train_on_buffer_data(self):
         bad_quality = True
         losses = []
+        aux_losses = []
         while bad_quality:
             qualities_bools = set()
             qualities = []
@@ -254,7 +257,7 @@ class Rudder:
                 for i, idx in enumerate(ids):
                     self.replay_buffer.losses[ids[i]] = loss[i].detach().clone().item()
                     qualities_bools.add(quality[i].item() > 0)
-                    qualities.append(np.clip(quality[i].item(), 0.0, 0.75))
+                    qualities.append(np.clip(quality[i].item(), 0.0, 1.0))
 
                 self.optimizer.zero_grad()
                 loss.mean().backward()
@@ -263,12 +266,13 @@ class Rudder:
                     p.grad.data.norm(2) ** 2 for p in self.il_learn.acmodel.parameters() if p.grad is not None) ** 0.5
                 self.optimizer.step()
                 losses.append(loss.mean().item())
+                aux_losses.append(aux.mean().item())
 
             self.current_quality = np.mean(qualities)
             if False not in qualities_bools:
                 bad_quality = False
-            self.info_print(ids[i], seq_return[i], loss[i], main[i], aux[i], predictions[i], my_rewards[i])
-        return np.mean(losses), grad_norm
+            self.info_print(ids[i], seq_return[i], loss[i], main[i], aux[i], predictions[i], my_rewards[i],my_dones[i])
+        return np.mean(losses),np.mean(aux_losses), grad_norm
 
     def redistribute_reward(self, predictions, rewards):
         # Use the differences of predictions as redistributed reward
