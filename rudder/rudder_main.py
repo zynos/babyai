@@ -353,7 +353,7 @@ class Rudder:
             episode.actions = actions
             loss_str = build_loss_str((final_loss, main_loss, aux_loss, predictions, orig_rewards, model_name))
             rudder_plotter = RudderPlotter(None)
-            output_path_prefix = "newEval/"+,model_name_orig+"/"
+            output_path_prefix = "newEval/"+model_name_orig+"/"
             # model pred contains (predictions.squeeze(), model_file_name[:-3], (loss, main_loss, aux_loss))
             model_predictions = [(predictions, model_name, (final_loss, (main_loss, aux_loss)))]
             rudder_plotter.plot_reward_redistribution(str(torch.sum(episode.rewards).item()),
