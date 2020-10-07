@@ -87,7 +87,7 @@ class Rudder:
     #             self.replay_buffer.add_single_sequence(masks_, rewards_, values_, actions_, obs_, seq_return,
     #                                                    final_loss, dones_, idx)
 
-    def fill_buffer_batch(self, masks, rewards, values, actions, obs, dones, update,model_name):
+    def fill_buffer_batch(self, masks, rewards, values, actions, obs, dones, update, model_name):
         # # rewards to zero mean unit variance
         # rewards = rewards / 20
         # if self.replay_buffer.added_episodes > 0:
@@ -103,7 +103,7 @@ class Rudder:
                                                                                       is_training=False)
         if update % 200 == 0:
             self.visualize_current_reward_redistribution(loss, my_obs, my_actions, my_rewards, aux, main, predictions,
-                                                         update, my_dones,model_name)
+                                                         update, my_dones, model_name)
         for i in range(my_actions.shape[0]):
             masks_, rewards_, values_, actions_, obs_, seq_return_, final_loss, dones_ = my_masks[i], my_rewards[i], \
                                                                                          my_values[i], my_actions[i], \
@@ -207,15 +207,19 @@ class Rudder:
 
         return torch.cat(predictions, dim=-1)
 
-    def info_print(self, idx, returnn, loss, main, aux, predictions, rewards,done):
-        diff_at_done = ((rewards[:len(predictions)] - predictions)**2)[done[:len(predictions)] == 1]
-        diff_at_done = ["{:.2f}".format(e.item()) for e in diff_at_done ]
+    def info_print(self, idx, returnn, loss, main, aux, predictions, rewards, done):
+        diff_at_done = ((rewards[:len(predictions)] - predictions) ** 2)[done[:len(predictions)] == 1]
+        diff_at_done = ["{:.2f}".format(e.item()) for e in diff_at_done]
+        rew_at_done = rewards[:len(predictions)][done[:len(predictions)] == 1]
+        rew_at_done = ["{:.2f}".format(e.item()) for e in rew_at_done]
+
         print(
             "sample {} return {:.2f} loss {:.4f}"
-            " mainL {:.4f}  auxL {:.4f} predMax {:.2f} rewMax {:.2f} diffAtDone {}".format(idx, returnn.item(), loss.item(),
-                                                                             main.item(),
-                                                                             aux.item(), predictions[0].max().item(),
-                                                                             rewards.max().item(),diff_at_done))
+            " mainL {:.4f}  auxL {:.4f} predMax {:.2f}"
+            " rewMax {:.2f} diffAtDone {} rewAtDone {}".format(idx, returnn.item(), loss.item(),
+                                                               main.item(), aux.item(), predictions[0].max().item(),
+                                                               rewards.max().item(), diff_at_done, rew_at_done)
+        )
 
     def get_batch_data(self):
         my_obs = []
@@ -271,8 +275,8 @@ class Rudder:
             self.current_quality = np.mean(qualities)
             if False not in qualities_bools:
                 bad_quality = False
-            self.info_print(ids[i], seq_return[i], loss[i], main[i], aux[i], predictions[i], my_rewards[i],my_dones[i])
-        return np.mean(losses),np.mean(aux_losses), grad_norm
+            self.info_print(ids[i], seq_return[i], loss[i], main[i], aux[i], predictions[i], my_rewards[i], my_dones[i])
+        return np.mean(losses), np.mean(aux_losses), grad_norm
 
     def redistribute_reward(self, predictions, rewards):
         # Use the differences of predictions as redistributed reward
@@ -333,11 +337,11 @@ class Rudder:
         return my_obs, my_actions, my_masks, my_rewards, my_values, my_dones
 
     def visualize_current_reward_redistribution(self, loss, my_obs, my_actions, my_rewards, aux, main, all_predictions,
-                                                update, dones,model_name_orig):
+                                                update, dones, model_name_orig):
         for i in range(len(loss))[:10]:
             orig_rewards = my_rewards[i]
             predictions = all_predictions[i]
-            model_name = model_name_orig+"_" + str(update)
+            model_name = model_name_orig + "_" + str(update)
             final_loss, main_loss, aux_loss = loss[i], main[i], aux[i]
             obs = my_obs[i]
             actions = my_actions[i]
@@ -349,7 +353,7 @@ class Rudder:
             episode.actions = actions
             loss_str = build_loss_str((final_loss, main_loss, aux_loss, predictions, orig_rewards, model_name))
             rudder_plotter = RudderPlotter(None)
-            output_path_prefix = "newEval/"
+            output_path_prefix = "newEval/"+,model_name_orig+"/"
             # model pred contains (predictions.squeeze(), model_file_name[:-3], (loss, main_loss, aux_loss))
             model_predictions = [(predictions, model_name, (final_loss, (main_loss, aux_loss)))]
             rudder_plotter.plot_reward_redistribution(str(torch.sum(episode.rewards).item()),
