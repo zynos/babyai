@@ -85,8 +85,8 @@ if __name__ == '__main__':
     logger = logging.getLogger(__name__)
 
 
-    load_vocab_from = 'newDataColl0.01'
-    # load_vocab_from = None
+    # load_vocab_from = 'newDataColl0.01'
+    load_vocab_from = None
     # Define obss preprocessor
     # if 'emb' in args.arch:
     #     obss_preprocessor = utils.IntObssPreprocessor(args.model, envs[0].observation_space, args.pretrained_model)
