@@ -33,7 +33,7 @@ class Rudder:
 
         self.max_grad_norm = 0.5
         self.mu = 1
-        self.quality_threshold = 0.8
+        self.quality_threshold = 0.85
         dummy_args = NonParsedDummyArgs(instr_dim, memory_dim, image_dim, lr)
         self.il_learn = RudderImitation(None, True, True, dummy_args)
         # these 2 must be updated when replaybuffer full and then after every new insert
@@ -269,7 +269,7 @@ class Rudder:
 
                 self.optimizer.zero_grad()
                 loss.mean().backward()
-                # torch.nn.utils.clip_grad_norm_(self.il_learn.acmodel.parameters(), self.max_grad_norm)
+                torch.nn.utils.clip_grad_norm_(self.il_learn.acmodel.parameters(), self.max_grad_norm)
                 grad_norm = sum(
                     p.grad.data.norm(2) ** 2 for p in self.il_learn.acmodel.parameters() if p.grad is not None) ** 0.5
                 self.optimizer.step()
