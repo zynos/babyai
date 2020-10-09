@@ -86,16 +86,16 @@ if __name__ == '__main__':
 
 
     # load_vocab_from = 'newDataColl0.01'
-    load_vocab_from = None
+    # load_vocab_from = None
     # Define obss preprocessor
-    # if 'emb' in args.arch:
-    #     obss_preprocessor = utils.IntObssPreprocessor(args.model, envs[0].observation_space, args.pretrained_model)
-    # else:
-    #     obss_preprocessor = utils.ObssPreprocessor(args.model, envs[0].observation_space, args.pretrained_model)
     if 'emb' in args.arch:
-        obss_preprocessor = utils.IntObssPreprocessor(args.model, envs[0].observation_space, load_vocab_from)
+        obss_preprocessor = utils.IntObssPreprocessor(args.model, envs[0].observation_space, args.pretrained_model)
     else:
-        obss_preprocessor = utils.ObssPreprocessor(args.model, envs[0].observation_space, load_vocab_from)
+        obss_preprocessor = utils.ObssPreprocessor(args.model, envs[0].observation_space, args.pretrained_model)
+    # if 'emb' in args.arch:
+    #     obss_preprocessor = utils.IntObssPreprocessor(args.model, envs[0].observation_space, load_vocab_from)
+    # else:
+    #     obss_preprocessor = utils.ObssPreprocessor(args.model, envs[0].observation_space, load_vocab_from)
 
     # Define actor-critic model
     acmodel = utils.load_model(args.model, raise_not_found=False)
