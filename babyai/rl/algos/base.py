@@ -17,7 +17,7 @@ class BaseAlgo(ABC):
     """The base class for RL algorithms."""
 
     def __init__(self, envs, acmodel, num_frames_per_proc, discount, lr, gae_lambda, entropy_coef,
-                 value_loss_coef, max_grad_norm, recurrence, preprocess_obss, reshape_reward, aux_info):
+                 value_loss_coef, max_grad_norm, recurrence, preprocess_obss, reshape_reward, aux_info,model_name=None):
         """
         Initializes a `BaseAlgo` instance.
 
@@ -130,7 +130,7 @@ class BaseAlgo(ABC):
         #                      acmodel.instr_dim, acmodel.memory_dim, acmodel.image_dim,
         #                      acmodel.action_space.n, self.device)
         self.rudder = Rudder(self.num_procs, self.device, 40,
-                             acmodel.instr_dim, acmodel.memory_dim, acmodel.image_dim, lr, self)
+                             acmodel.instr_dim, acmodel.memory_dim, acmodel.image_dim, model_name,lr, self)
 
         # self.ctx=mp.get_context("spawn")
         # self.queue=self.ctx.Queue()

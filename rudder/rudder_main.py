@@ -12,11 +12,11 @@ from torch.optim import Adam
 
 
 class NonParsedDummyArgs:
-    def __init__(self, instr_dim, memory_dim, image_dim, lr):
-        self.model = "rudderRLModel"
+    def __init__(self, instr_dim, memory_dim, image_dim,instr_arch,model_name, lr):
+        self.model = "rudder_"+model_name
         self.no_instr = False
         self.no_mem = False
-        self.instr_arch = "gru"
+        self.instr_arch = instr_arch
         self.arch = 'expert_filmcnn'
         self.image_dim = image_dim
         self.memory_dim = memory_dim
@@ -29,12 +29,12 @@ class NonParsedDummyArgs:
 
 
 class Rudder:
-    def __init__(self, nr_procs, device, frames_per_proc, instr_dim, memory_dim, image_dim, lr, base_rl_algo):
+    def __init__(self, nr_procs, device, frames_per_proc, instr_dim, memory_dim, image_dim,model_name, lr, base_rl_algo):
 
         self.max_grad_norm = 0.5
         self.mu = 1
         self.quality_threshold = 0.85
-        dummy_args = NonParsedDummyArgs(instr_dim, memory_dim, image_dim, lr)
+        dummy_args = NonParsedDummyArgs(instr_dim, memory_dim, image_dim,base_rl_algo.acmodel.lang_model, model_name,lr)
         self.il_learn = RudderImitation(None, True, True, dummy_args)
         # these 2 must be updated when replaybuffer full and then after every new insert
         self.il_learn.mean = 0

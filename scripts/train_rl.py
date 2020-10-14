@@ -121,7 +121,7 @@ if __name__ == '__main__':
                                  args.gae_lambda,
                                  args.entropy_coef, args.value_loss_coef, args.max_grad_norm, args.recurrence,
                                  args.optim_eps, args.clip_eps, args.ppo_epochs, args.batch_size, obss_preprocessor,
-                                 reshape_reward)
+                                 reshape_reward,model_name=args.model)
         ctx = mp.get_context('spawn')
         algo.ctx = ctx
         # algo.pool = algo.ctx.Pool(1, maxtasksperchild=1)
