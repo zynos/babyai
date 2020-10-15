@@ -35,7 +35,7 @@ class Rudder:
         self.mu = 1
         self.quality_threshold = 0.85
         dummy_args = NonParsedDummyArgs(instr_dim, memory_dim, image_dim,base_rl_algo.acmodel.lang_model, model_name,lr)
-        self.il_learn = RudderImitation(None, True, True,True, dummy_args)
+        self.il_learn = RudderImitation(None, True, True,False, dummy_args)
         # these 2 must be updated when replaybuffer full and then after every new insert
         self.il_learn.mean = 0
         self.il_learn.std_dev = 1
@@ -101,9 +101,9 @@ class Rudder:
         loss, seq_return, (aux, main, predictions, quality) = self.get_loss_for_batch(my_obs, my_masks, my_rewards,
                                                                                       my_actions, my_values, my_dones,
                                                                                       is_training=False)
-        # if update % 200 == 0:
-        #     self.visualize_current_reward_redistribution(loss, my_obs, my_actions, my_rewards, aux, main, predictions,
-        #                                                  update, my_dones, model_name)
+        if update % 200 == 0:
+            self.visualize_current_reward_redistribution(loss, my_obs, my_actions, my_rewards, aux, main, predictions,
+                                                         update, my_dones, model_name)
         for i in range(my_actions.shape[0]):
             masks_, rewards_, values_, actions_, obs_, seq_return_, final_loss, dones_ = my_masks[i], my_rewards[i], \
                                                                                          my_values[i], my_actions[i], \
