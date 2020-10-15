@@ -35,7 +35,7 @@ class Rudder:
         self.mu = 1
         self.quality_threshold = 0.85
         dummy_args = NonParsedDummyArgs(instr_dim, memory_dim, image_dim,base_rl_algo.acmodel.lang_model, model_name,lr)
-        self.il_learn = RudderImitation(None, True, True, dummy_args)
+        self.il_learn = RudderImitation(None, True, True,True, dummy_args)
         # these 2 must be updated when replaybuffer full and then after every new insert
         self.il_learn.mean = 0
         self.il_learn.std_dev = 1
@@ -121,8 +121,8 @@ class Rudder:
         # torch.where(tensor == 0, torch.ones(1, device=self.device), torch.zeros(1, device=self.device))
         return (tensor - 1) * (-1)
 
-    def net_single_step_feed_forward(self, memory, memories, preprocessed_obs, mask, action, step):
-        model_results = self.il_learn.acmodel(preprocessed_obs, memory * mask.unsqueeze(1), actions=action)
+    def net_single_step_feed_forward(self, memory, memories, preprocessed_obs, mask, action,value, step):
+        model_results = self.il_learn.acmodel(preprocessed_obs, memory * mask.unsqueeze(1), actions=action,value=value)
         new_memory = model_results["memory"]
         memories[step] = memory
         memory = new_memory
@@ -161,7 +161,7 @@ class Rudder:
         final_loss = main_loss + self.il_learn.aux_loss_multiplier * aux_loss
         return final_loss, (main_loss.detach().clone(), aux_loss.detach().clone(), quality)
 
-    def feed_single_sequence_to_net(self, obss, actions, masks, is_training=False, batch=False):
+    def feed_single_sequence_to_net(self, obss, actions, masks,values, is_training=False, batch=False):
         if batch:
             memories = torch.zeros([actions.shape[1], actions.shape[0], self.il_learn.acmodel.memory_size],
                                    device=self.device)
@@ -190,16 +190,17 @@ class Rudder:
                 obs = obss[:, i]
                 action = actions[:, i]
                 mask = masks[:, i]
+                value = values[:,i]
 
             preprocessed_obs = self.base_rl_algo.preprocess_obss(obs, device=self.device)
             if is_training:
                 memory, memories, model_results = self.net_single_step_feed_forward(memory, memories, preprocessed_obs,
-                                                                                    mask, action, i)
+                                                                                    mask, action,value, i)
             else:
                 with torch.no_grad():
                     memory, memories, model_results = self.net_single_step_feed_forward(memory, memories,
                                                                                         preprocessed_obs, mask, action,
-                                                                                        i)
+                                                                                        value,i)
             predictions.append(model_results["value"])
 
         if batch:
@@ -303,7 +304,7 @@ class Rudder:
         for i in range(self.nr_procs):
             masks_, rewards_, values_, actions_, dones_, obs_ = self.get_process_data(i, obs, masks, rewards, values,
                                                                                       actions, dones)
-            predictions = self.feed_single_sequence_to_net(obs_, actions_, masks_)
+            predictions = self.feed_single_sequence_to_net(obs_, actions_, masks_,values_)
             redistributed_reward = self.redistribute_reward(predictions.unsqueeze(0), rewards_.unsqueeze(0))
             out_rewards.append(redistributed_reward.squeeze(0))
             best_actions.append(actions_[torch.argmax(redistributed_reward)].item())
@@ -368,9 +369,9 @@ class Rudder:
 
     def predict_new_rewards_batch(self, obs, masks, rewards, values, actions, dones):
         # rewards = rewards / 20
-        my_obs, my_actions, my_masks, my_rewards, _, _ = self.get_data_for_every_process(obs, masks, rewards, values,
+        my_obs, my_actions, my_masks, my_rewards, my_values, _ = self.get_data_for_every_process(obs, masks, rewards, values,
                                                                                          actions, dones)
-        predictions = self.feed_single_sequence_to_net(my_obs, my_actions, my_masks, batch=True)
+        predictions = self.feed_single_sequence_to_net(my_obs, my_actions, my_masks,my_values, batch=True)
         redistributed_reward = self.redistribute_reward(predictions, my_rewards)
         # out_rewards.append(redistributed_reward.squeeze(0))
         best_actions = [my_actions[i][torch.argmax(line)].item() for i, line in enumerate(redistributed_reward)]
@@ -382,7 +383,7 @@ class Rudder:
         return out_rewards.transpose(0, 1)
 
     def get_loss_for_batch(self, obs, masks, rewards, actions, values, dones, is_training=False):
-        predictions = self.feed_single_sequence_to_net(obs, actions, masks, is_training, True)
+        predictions = self.feed_single_sequence_to_net(obs, actions, masks,values, is_training, True)
         rewards = rewards[:, :predictions.shape[1]].clone()
         seq_return = torch.sum(rewards, dim=1)
         values = values[:, :predictions.shape[1]]

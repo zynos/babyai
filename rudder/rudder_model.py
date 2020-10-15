@@ -42,6 +42,7 @@ from abc import abstractmethod, abstractproperty
 import torch.nn as nn
 import torch.nn.functional as F
 
+
 # copied these to avoid circular dependency
 class MyACModel:
     recurrent = False
@@ -73,7 +74,7 @@ class ACModel(nn.Module, MyRecurrentACModel):
     def __init__(self, obs_space, action_space,
                  image_dim=128, memory_dim=128, instr_dim=128,
                  use_instr=False, lang_model="gru", use_memory=False, arch="cnn1",
-                 aux_info=None, add_actions_to_lstm=True, add_actions_to_film=True):
+                 aux_info=None, add_actions_to_lstm=True, add_actions_to_film=True, use_value=False):
         super().__init__()
 
         # Decide which components are enabled
@@ -88,6 +89,7 @@ class ACModel(nn.Module, MyRecurrentACModel):
         self.action_space = action_space
         self.add_actions_to_lstm = add_actions_to_lstm
         self.add_actions_to_film = add_actions_to_film
+        self.use_value = use_value
 
         self.obs_space = obs_space
 
@@ -142,11 +144,14 @@ class ACModel(nn.Module, MyRecurrentACModel):
                 self.memory2key = nn.Linear(self.memory_size, self.final_instr_dim)
 
         # Define memory
+        lstm_input_dim = self.image_dim
         if self.use_memory:
             if self.add_actions_to_lstm:
-                self.memory_rnn = nn.LSTMCell(self.image_dim + action_space.n, self.memory_dim)
-            else:
-                self.memory_rnn = nn.LSTMCell(self.image_dim, self.memory_dim)
+                lstm_input_dim += action_space.n
+            if use_value:
+                lstm_input_dim += 1
+
+            self.memory_rnn = nn.LSTMCell(lstm_input_dim, self.memory_dim)
 
         # Resize image embedding
         self.embedding_size = self.semi_memory_size
@@ -251,7 +256,7 @@ class ACModel(nn.Module, MyRecurrentACModel):
     def semi_memory_size(self):
         return self.memory_dim
 
-    def forward(self, obs, memory, instr_embedding=None, actions=None):
+    def forward(self, obs, memory, instr_embedding=None, actions=None,value=None):
         if self.use_instr and instr_embedding is None:
             instr_embedding = self._get_instr_embedding(obs.instr)
         if self.use_instr and self.lang_model == "attgru":
@@ -283,6 +288,9 @@ class ACModel(nn.Module, MyRecurrentACModel):
 
         if self.add_actions_to_lstm:
             x = torch.cat([x, one_hot_actions], dim=1)
+        if self.use_value:
+            x = torch.cat([x, value.unsqueeze(1)], dim=1)
+
 
         if self.use_memory:
             hidden = (memory[:, :self.semi_memory_size], memory[:, self.semi_memory_size:])
