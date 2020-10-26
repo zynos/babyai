@@ -3,6 +3,7 @@ import torch.nn as nn
 from torch.distributions.categorical import Categorical
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 from babyai.rl.utils.supervised_losses import required_heads
+from widis_lstm_tools.nn import LSTMCell
 
 
 # Function from https://github.com/ikostrikov/pytorch-a2c-ppo-acktr/blob/master/model.py
@@ -14,7 +15,8 @@ def initialize_parameters(m):
         if m.bias is not None:
             m.bias.data.fill_(0)
 
-
+def lambda_replace(x):
+    return x
 # Inspired by FiLMedBlock from https://arxiv.org/abs/1709.07871
 class ExpertControllerFiLM(nn.Module):
     def __init__(self, in_features, out_features, in_channels, imm_channels):
@@ -74,7 +76,7 @@ class ACModel(nn.Module, MyRecurrentACModel):
     def __init__(self, obs_space, action_space,
                  image_dim=128, memory_dim=128, instr_dim=128,
                  use_instr=False, lang_model="gru", use_memory=False, arch="cnn1",
-                 aux_info=None, add_actions_to_lstm=True, add_actions_to_film=True, use_value=False):
+                 aux_info=None, add_actions_to_lstm=True, add_actions_to_film=True, use_value=False,use_widi=False):
         super().__init__()
 
         # Decide which components are enabled
@@ -90,7 +92,7 @@ class ACModel(nn.Module, MyRecurrentACModel):
         self.add_actions_to_lstm = add_actions_to_lstm
         self.add_actions_to_film = add_actions_to_film
         self.use_value = use_value
-
+        self.use_widi = use_widi
         self.obs_space = obs_space
 
         if arch == "cnn1":
@@ -145,13 +147,32 @@ class ACModel(nn.Module, MyRecurrentACModel):
 
         # Define memory
         lstm_input_dim = self.image_dim
+
+
+
         if self.use_memory:
             if self.add_actions_to_lstm:
                 lstm_input_dim += action_space.n
             if use_value:
                 lstm_input_dim += 1
 
-            self.memory_rnn = nn.LSTMCell(lstm_input_dim, self.memory_dim)
+            lstm_cell = LSTMCell(
+                n_fwd_features=lstm_input_dim, n_lstm=self.memory_dim,
+                # cell input: initialize weights to forward inputs with xavier, disable connections to recurrent inputs
+                w_ci=(torch.nn.init.xavier_normal_, False),
+                # input gate: disable connections to forward inputs, initialize weights to recurrent inputs with xavier
+                w_ig=(False, torch.nn.init.xavier_normal_),
+                # output gate: disable all connection (=no forget gate) and disable bias
+                w_og=False, b_og=False,
+                # forget gate: disable all connection (=no forget gate) and disable bias
+                w_fg=False, b_fg=False,
+                # LSTM output activation is set to identity function
+                a_out=lambda_replace
+            )
+            if use_widi:
+                self.memory_rnn = lstm_cell
+            else:
+                self.memory_rnn = nn.LSTMCell(lstm_input_dim, self.memory_dim)
 
         # Resize image embedding
         self.embedding_size = self.semi_memory_size
@@ -256,7 +277,7 @@ class ACModel(nn.Module, MyRecurrentACModel):
     def semi_memory_size(self):
         return self.memory_dim
 
-    def forward(self, obs, memory, instr_embedding=None, actions=None,value=None):
+    def forward(self, obs, memory, instr_embedding=None, actions=None, value=None):
         if self.use_instr and instr_embedding is None:
             instr_embedding = self._get_instr_embedding(obs.instr)
         if self.use_instr and self.lang_model == "attgru":
@@ -291,11 +312,16 @@ class ACModel(nn.Module, MyRecurrentACModel):
         if self.use_value:
             x = torch.cat([x, value.unsqueeze(1)], dim=1)
 
-
         if self.use_memory:
             hidden = (memory[:, :self.semi_memory_size], memory[:, self.semi_memory_size:])
-            hidden = self.memory_rnn(x, hidden)
-            embedding = hidden[0]
+            if self.use_widi:
+                hidden = self.memory_rnn(x, hidden[0],hidden[1])
+                embedding = hidden[0]
+            else:
+                hidden = self.memory_rnn(x, hidden)
+                hidden = (hidden[1],hidden[0])
+                embedding = hidden[1]
+
             memory = torch.cat(hidden, dim=1)
         else:
             embedding = x

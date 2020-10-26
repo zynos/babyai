@@ -1,9 +1,11 @@
 import os
+import sys
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 import torch
+from PyQt5 import QtWidgets
 
 
 class RudderPlotter:
@@ -12,6 +14,8 @@ class RudderPlotter:
         self.out_image_height = 10.8
         self.out_image_width = 19.2
         # self.il_learn = il_learn
+        # self.app = QtWidgets.QApplication(sys.argv)
+
 
         Path("myPics").mkdir(parents=True, exist_ok=True)
 
@@ -50,6 +54,8 @@ class RudderPlotter:
 
     def plot_reward_redistribution(self, start, stop, path_start, model_predictions, short_episode, env,
                                    top_titel=None,multi_commands=False):
+        # app = QtWidgets.QApplication(sys.argv)
+
         # loss, returns, quality, predictions = self.rudder.feed_network(short_episode)
         if not isinstance(short_episode.instructions[0],str):
             command = {"put": 1, "the": 2, "grey": 3, "key": 4, "next": 5, "to": 6, "red": 7, "box": 8, "yellow": 9,

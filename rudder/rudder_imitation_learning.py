@@ -70,7 +70,7 @@ class EpochIndexSampler:
 
 
 class RudderImitation(object):
-    def __init__(self, path_to_demos, add_actions_to_lstm, add_actions_to_film,use_value, args):
+    def __init__(self, path_to_demos, add_actions_to_lstm, add_actions_to_film,use_value,use_widi, args):
         self.max_len = 128
         self.minus_to_one_scale = True
         # self.use_actions = use_actions
@@ -99,7 +99,7 @@ class RudderImitation(object):
                                        args.image_dim, args.memory_dim, args.instr_dim,
                                        not self.args.no_instr, self.args.instr_arch,
                                        not self.args.no_mem, self.args.arch, add_actions_to_lstm=add_actions_to_lstm,
-                                       add_actions_to_film=add_actions_to_film,use_value=use_value)
+                                       add_actions_to_film=add_actions_to_film,use_value=use_value,use_widi=use_widi)
         self.obss_preprocessor.vocab.save()
         utils.save_model(self.acmodel, args.model)
 
