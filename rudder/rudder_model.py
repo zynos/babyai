@@ -76,7 +76,8 @@ class ACModel(nn.Module, MyRecurrentACModel):
     def __init__(self, obs_space, action_space,
                  image_dim=128, memory_dim=128, instr_dim=128,
                  use_instr=False, lang_model="gru", use_memory=False, arch="cnn1",
-                 aux_info=None, add_actions_to_lstm=True, add_actions_to_film=True, use_value=False,use_widi=False):
+                 aux_info=None, add_actions_to_lstm=True, add_actions_to_film=True, use_value=False,use_widi=False,
+                 use_endpool=False,use_residual=False):
         super().__init__()
 
         # Decide which components are enabled
@@ -94,6 +95,8 @@ class ACModel(nn.Module, MyRecurrentACModel):
         self.use_value = use_value
         self.use_widi = use_widi
         self.obs_space = obs_space
+        self.end_pool = use_endpool
+        self.res = use_residual
 
         if arch == "cnn1":
             self.image_conv = nn.Sequential(
@@ -109,17 +112,27 @@ class ACModel(nn.Module, MyRecurrentACModel):
             if not self.use_instr:
                 raise ValueError("FiLM architecture can be used when instructions are enabled")
 
-            self.image_conv = nn.Sequential(
-                nn.Conv2d(in_channels=3, out_channels=128, kernel_size=(2, 2), padding=1),
-                nn.BatchNorm2d(128),
-                nn.ReLU(),
-                nn.MaxPool2d(kernel_size=(2, 2), stride=2),
-                nn.Conv2d(in_channels=128, out_channels=128, kernel_size=(3, 3), padding=1),
-                nn.BatchNorm2d(128),
-                nn.ReLU(),
-                nn.MaxPool2d(kernel_size=(2, 2), stride=2)
-            )
-            self.film_pool = nn.MaxPool2d(kernel_size=(2, 2), stride=2)
+            if self.end_pool:
+                self.image_conv = nn.Sequential(
+                    nn.Conv2d(in_channels=3, out_channels=128, kernel_size=(2, 2), padding=1),
+                    nn.BatchNorm2d(128),
+                    nn.ReLU(),
+                    nn.Conv2d(in_channels=128, out_channels=128, kernel_size=(3, 3), padding=1),
+                    nn.BatchNorm2d(128),
+                    nn.ReLU(),
+                )
+            else:
+                self.image_conv = nn.Sequential(
+                    nn.Conv2d(in_channels=3, out_channels=128, kernel_size=(2, 2), padding=1),
+                    nn.BatchNorm2d(128),
+                    nn.ReLU(),
+                    nn.MaxPool2d(kernel_size=(2, 2), stride=2),
+                    nn.Conv2d(in_channels=128, out_channels=128, kernel_size=(3, 3), padding=1),
+                    nn.BatchNorm2d(128),
+                    nn.ReLU(),
+                    nn.MaxPool2d(kernel_size=(2, 2), stride=2)
+                )
+            self.film_pool = nn.MaxPool2d(kernel_size=(7,7) if self.end_pool else(2, 2), stride=2)
         else:
             raise ValueError("Incorrect architecture name: {}".format(arch))
 
@@ -300,7 +313,10 @@ class ACModel(nn.Module, MyRecurrentACModel):
         if self.arch.startswith("expert_filmcnn"):
             x = self.image_conv(x)
             for controler in self.controllers:
-                x = controler(x, instr_embedding)
+                out = controler(x, instr_embedding)
+                if self.res:
+                    out += x
+                x = out
             x = F.relu(self.film_pool(x))
         else:
             x = self.image_conv(x)
