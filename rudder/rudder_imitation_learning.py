@@ -70,7 +70,8 @@ class EpochIndexSampler:
 
 
 class RudderImitation(object):
-    def __init__(self, path_to_demos, add_actions_to_lstm, add_actions_to_film,use_value,use_widi, args):
+    def __init__(self, path_to_demos, add_actions_to_lstm, add_actions_to_film, use_value, use_widi, use_endpool,
+                 use_residual, args):
         self.max_len = 128
         self.minus_to_one_scale = True
         # self.use_actions = use_actions
@@ -99,7 +100,8 @@ class RudderImitation(object):
                                        args.image_dim, args.memory_dim, args.instr_dim,
                                        not self.args.no_instr, self.args.instr_arch,
                                        not self.args.no_mem, self.args.arch, add_actions_to_lstm=add_actions_to_lstm,
-                                       add_actions_to_film=add_actions_to_film,use_value=use_value,use_widi=use_widi)
+                                       add_actions_to_film=add_actions_to_film, use_value=use_value, use_widi=use_widi,
+                                       use_endpool=use_endpool, use_residual=use_residual)
         self.obss_preprocessor.vocab.save()
         utils.save_model(self.acmodel, args.model)
 
@@ -410,7 +412,7 @@ class RudderImitation(object):
         log["main_loss"] = float(final_main_loss)
 
         if rl_input:
-            return log,finished_episodes,my_indices
+            return log, finished_episodes, my_indices
         if rudder_eval:
             return log, finished_episodes
         return log

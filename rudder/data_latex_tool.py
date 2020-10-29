@@ -13,7 +13,7 @@ def create_summary(dfs):
         ret_max = before_45M['return_mean'].max()
 
         around_03_ret = df[df["return_mean"]>=0.3]
-        frames_min = around_03_ret['frames'].min()
+        frames_min = around_03_ret['frames'].min()/1000000
         out.append([ret_mean,ret_max,frames_min])
 
     out = pd.DataFrame(out, columns=['ret_mean','ret_max','frame_min'])
@@ -39,4 +39,8 @@ for d in dirs:
         to_compared.append(data)
 
 assert len(baseline_data) == len(to_compared) == 3
-create_summary(baseline_data)
+base_df = create_summary(baseline_data).add_suffix("_base")
+compare_df = create_summary(to_compared).add_suffix("_rudder")
+# final_df = pd.DataFrame.merge(base_df,compare_df,on=['ret_mean', 'ret_max','frame_min'],suffixes=('_base', '_rudder'))
+final_df = pd.concat([base_df, compare_df.reindex(base_df.index)], axis=1).describe().transpose()
+print('d')
