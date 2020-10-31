@@ -332,6 +332,7 @@ class ACModel(nn.Module, MyRecurrentACModel):
             hidden = (memory[:, :self.semi_memory_size], memory[:, self.semi_memory_size:])
             if self.use_widi:
                 hidden = self.memory_rnn(x, hidden[0],hidden[1])
+                hidden = (hidden[0].to("cuda"),hidden[1].to("cuda"))
                 embedding = hidden[0]
             else:
                 hidden = self.memory_rnn(x, hidden)
