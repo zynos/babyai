@@ -34,10 +34,10 @@ class Rudder:
         self.max_grad_norm = 0.5
         self.mu = 1
         self.quality_threshold = 0.85
-        use_widi = False
+        use_widi = True
         dummy_args = NonParsedDummyArgs(instr_dim, memory_dim, image_dim,base_rl_algo.acmodel.lang_model, model_name,lr)
-        use_residual = True
-        use_endpool = True
+        use_residual = False
+        use_endpool = False
         self.il_learn = RudderImitation(None, True, True,False,use_widi,use_endpool,use_residual, dummy_args)
         # these 2 must be updated when replaybuffer full and then after every new insert
         self.il_learn.mean = 0
