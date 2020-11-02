@@ -109,9 +109,9 @@ class Rudder:
                                                                                       my_actions, my_values, my_dones,
                                                                                       my_visual_embeddings,
                                                                                       is_training=False)
-        # if update % 200 == 0:
-        #     self.visualize_current_reward_redistribution(loss, my_obs, my_actions, my_rewards, aux, main, predictions,
-        #                                                  update, my_dones, model_name)
+        if update % 200 == 0:
+            self.visualize_current_reward_redistribution(loss, my_obs, my_actions, my_rewards, aux, main, predictions,
+                                                         update, my_dones, model_name)
         for i in range(my_actions.shape[0]):
             masks_, rewards_, values_, actions_, obs_, seq_return_, final_loss, dones_, visual_embeddings_ = my_masks[
                                                                                                                  i], \
