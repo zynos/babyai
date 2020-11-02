@@ -415,7 +415,7 @@ class Rudder:
             obs, masks, rewards,
             values,
             actions, dones, visual_embeddings)
-        predictions = self.feed_single_sequence_to_net(my_obs, my_actions, my_masks, my_values, batch=True)
+        predictions = self.feed_single_sequence_to_net(my_obs, my_actions, my_masks, my_values,my_visual_embeddings, batch=True)
         redistributed_reward = self.redistribute_reward(predictions, my_rewards)
         # out_rewards.append(redistributed_reward.squeeze(0))
         best_actions = [my_actions[i][torch.argmax(line)].item() for i, line in enumerate(redistributed_reward)]
