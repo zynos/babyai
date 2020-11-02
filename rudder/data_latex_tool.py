@@ -33,8 +33,8 @@ def create_df_slice(data):
     return df_to_plus_minus(sum_df)
 
 
-directory = "../scripts/logs/masterThesis/forMac/"
-baseline_name = "Reccurrence"
+directory = "../scripts/logs/masterThesis/rudVSEPoolRes/"
+baseline_name = "rudbase"
 
 dirs = [f for f in listdir(directory) if f != '.DS_Store']
 

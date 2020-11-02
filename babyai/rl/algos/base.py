@@ -101,6 +101,7 @@ class BaseAlgo(ABC):
         self.dones = torch.zeros(*shape, device=self.device)
         self.actions = torch.zeros(*shape, device=self.device, dtype=torch.int)
         self.values = torch.zeros(*shape, device=self.device)
+        self.embeddings = torch.zeros(*shape, self.acmodel.image_dim, device=self.device)
         self.rudder_values = torch.zeros(*shape, device=self.device)
         self.rewards = torch.zeros(*shape, device=self.device)
         self.rudder_rewards = torch.zeros(*shape, device=self.device)
@@ -246,6 +247,7 @@ class BaseAlgo(ABC):
             self.actions[i] = action
             self.values[i] = value
             self.rudder_values[i] = rudder_value
+            self.embeddings[i] = embedding
             if self.reshape_reward is not None:
                 self.rewards[i] = torch.tensor([
                     self.reshape_reward(obs_, action_, reward_, done_)
@@ -291,8 +293,8 @@ class BaseAlgo(ABC):
             self.rudder.fill_buffer_batch(self.masks.detach().clone(), self.rewards.detach().clone(),
                                           self.values.detach().clone(),
                                           self.actions.detach().clone(), self.obss, self.dones.detach().clone(),
-                                          update_nr,
-                                          self.model_name)
+                                          self.embeddings.detach().clone(),update_nr,self.model_name)
+
             if self.rudder.replay_buffer.buffer_full() and self.rudder.replay_buffer.encountered_different_returns():
                 rudder_loss,rudder_aux, rud_grad_norm = self.rudder.train_on_buffer_data()
                 self.rudder.grad_norm = rud_grad_norm
@@ -300,7 +302,8 @@ class BaseAlgo(ABC):
                                                                             self.rewards.detach().clone(),
                                                                             self.values.detach().clone(),
                                                                             self.actions.detach().clone(),
-                                                                            self.dones.detach().clone())
+                                                                            self.dones.detach().clone(),
+                                                                            self.embeddings.detach().clone())
                 # self.rudder_rewards *= 20
 
         preprocessed_obs = self.preprocess_obss(self.obs, device=self.device)

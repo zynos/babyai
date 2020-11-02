@@ -252,6 +252,7 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
             x = self.image_conv(x)
 
         x = x.reshape(x.shape[0], -1)
+        my_visual_embedding = x.detach().clone()
 
         if self.use_memory:
             hidden = (memory[:, :self.semi_memory_size], memory[:, self.semi_memory_size:])
@@ -281,7 +282,7 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
         rudder_value = x.squeeze(1)
 
         return {'dist': dist, 'value': value, 'memory': memory, 'extra_predictions': extra_predictions,
-                "embedding":embedding, "rudder_value":rudder_value,"logits":logits}
+                "embedding":my_visual_embedding, "rudder_value":rudder_value,"logits":logits}
 
     def _get_instr_embedding(self, instr):
         if self.lang_model == 'gru':

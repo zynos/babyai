@@ -15,8 +15,11 @@ def initialize_parameters(m):
         if m.bias is not None:
             m.bias.data.fill_(0)
 
+
 def lambda_replace(x):
     return x
+
+
 # Inspired by FiLMedBlock from https://arxiv.org/abs/1709.07871
 class ExpertControllerFiLM(nn.Module):
     def __init__(self, in_features, out_features, in_channels, imm_channels):
@@ -76,8 +79,8 @@ class ACModel(nn.Module, MyRecurrentACModel):
     def __init__(self, obs_space, action_space,
                  image_dim=128, memory_dim=128, instr_dim=128,
                  use_instr=False, lang_model="gru", use_memory=False, arch="cnn1",
-                 aux_info=None, add_actions_to_lstm=True, add_actions_to_film=True, use_value=False,use_widi=False,
-                 use_endpool=False,use_residual=False):
+                 aux_info=None, add_actions_to_lstm=True, add_actions_to_film=True, use_value=False, use_widi=False,
+                 use_endpool=False, use_residual=False, use_visual_embedding=False):
         super().__init__()
 
         # Decide which components are enabled
@@ -97,6 +100,7 @@ class ACModel(nn.Module, MyRecurrentACModel):
         self.obs_space = obs_space
         self.end_pool = use_endpool
         self.res = use_residual
+        self.use_visual_embedding = use_visual_embedding
 
         if arch == "cnn1":
             self.image_conv = nn.Sequential(
@@ -132,7 +136,7 @@ class ACModel(nn.Module, MyRecurrentACModel):
                     nn.ReLU(),
                     nn.MaxPool2d(kernel_size=(2, 2), stride=2)
                 )
-            self.film_pool = nn.MaxPool2d(kernel_size=(7,7) if self.end_pool else(2, 2), stride=2)
+            self.film_pool = nn.MaxPool2d(kernel_size=(7, 7) if self.end_pool else (2, 2), stride=2)
         else:
             raise ValueError("Incorrect architecture name: {}".format(arch))
 
@@ -161,13 +165,14 @@ class ACModel(nn.Module, MyRecurrentACModel):
         # Define memory
         lstm_input_dim = self.image_dim
 
-
-
         if self.use_memory:
-            if self.add_actions_to_lstm:
-                lstm_input_dim += action_space.n
+            if self.use_visual_embedding:
+                # assuming that ppo model is standard
+                lstm_input_dim *= 2
             if use_value:
                 lstm_input_dim += 1
+            if self.add_actions_to_lstm:
+                lstm_input_dim += action_space.n
 
             lstm_cell = LSTMCell(
                 n_fwd_features=lstm_input_dim, n_lstm=self.memory_dim,
@@ -290,7 +295,7 @@ class ACModel(nn.Module, MyRecurrentACModel):
     def semi_memory_size(self):
         return self.memory_dim
 
-    def forward(self, obs, memory, instr_embedding=None, actions=None, value=None):
+    def forward(self, obs, memory, instr_embedding=None, visual_embedding=None,actions=None, value=None):
         if self.use_instr and instr_embedding is None:
             instr_embedding = self._get_instr_embedding(obs.instr)
         if self.use_instr and self.lang_model == "attgru":
@@ -327,16 +332,19 @@ class ACModel(nn.Module, MyRecurrentACModel):
             x = torch.cat([x, one_hot_actions], dim=1)
         if self.use_value:
             x = torch.cat([x, value.unsqueeze(1)], dim=1)
+        if self.use_visual_embedding:
+            x = torch.cat([x, visual_embedding], dim=1)
+
 
         if self.use_memory:
             hidden = (memory[:, :self.semi_memory_size], memory[:, self.semi_memory_size:])
             if self.use_widi:
-                hidden = self.memory_rnn(x, hidden[0],hidden[1])
-                hidden = (hidden[0].to("cuda"),hidden[1].to("cuda"))
+                hidden = self.memory_rnn(x, hidden[0], hidden[1])
+                hidden = (hidden[0].to("cuda"), hidden[1].to("cuda"))
                 embedding = hidden[0]
             else:
                 hidden = self.memory_rnn(x, hidden)
-                hidden = (hidden[1],hidden[0])
+                hidden = (hidden[1], hidden[0])
                 embedding = hidden[1]
 
             memory = torch.cat(hidden, dim=1)

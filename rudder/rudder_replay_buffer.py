@@ -11,6 +11,7 @@ class RudderReplayBuffer:
         self.max_size = 128
         self.nr_procs = nr_procs
         self.frames_per_proc = frames_per_proc
+        self.visual_embeddings = torch.zeros(self.max_size, frames_per_proc,128, device=device)
         self.masks = torch.zeros(self.max_size, frames_per_proc, device=device)
         self.rewards = torch.zeros(self.max_size, frames_per_proc, device=device)
         self.values = torch.zeros(self.max_size, frames_per_proc, device=device)
@@ -55,7 +56,7 @@ class RudderReplayBuffer:
     #     self.returns = torch.sum(rewards, dim=0)
     #     self.obs = list(map(list, zip(*obs)))
 
-    def add_single_sequence(self, masks, rewards, values, actions, obs, returnn, loss, dones, index):
+    def add_single_sequence(self, masks, rewards, values, actions, obs, returnn, loss, dones,visual_embeddings, index):
         self.masks[index] = masks
         self.rewards[index] = rewards
         self.values[index] = values
@@ -64,11 +65,13 @@ class RudderReplayBuffer:
         self.dones[index] = dones
         self.returns[index] = returnn.item()
         self.losses[index] = loss.item()
+        self.visual_embeddings[index] = visual_embeddings
         if not self.buffer_full():
             self.added_episodes += 1
 
     def get_single_sequence(self, nr):
-        return self.obs[nr], self.masks[nr], self.rewards[nr].clone(), self.actions[nr], self.values[nr], self.dones[nr]
+        return self.obs[nr], self.masks[nr], self.rewards[nr].clone(), self.actions[nr], self.values[nr], self.dones[nr],self.visual_embeddings[nr]
+
 
     def get_combined_ranks(self, losses, returns):
         # we need the deviation of the mean return per episode
