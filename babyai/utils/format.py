@@ -4,6 +4,7 @@ import numpy
 import re
 import torch
 import babyai.rl
+from rudder.rudder_word_embedding import transform_obs
 
 from .. import utils
 
@@ -61,22 +62,26 @@ class InstructionsPreprocessor(object):
                 else:
                     raise FileNotFoundError('No pre-trained model under the specified name')
 
-    def __call__(self, obss, device=None):
-        raw_instrs = []
-        max_instr_len = 0
+    def __call__(self, obss, device=None,use_bert=False):
+        if use_bert:
+            instrs = transform_obs(obss)
+            instrs = torch.stack(instrs)
+        else:
+            raw_instrs = []
+            max_instr_len = 0
 
-        for obs in obss:
-            tokens = re.findall("([a-z]+)", obs["mission"].lower())
-            instr = numpy.array([self.vocab[token] for token in tokens])
-            raw_instrs.append(instr)
-            max_instr_len = max(len(instr), max_instr_len)
+            for obs in obss:
+                tokens = re.findall("([a-z]+)", obs["mission"].lower())
+                instr = numpy.array([self.vocab[token] for token in tokens])
+                raw_instrs.append(instr)
+                max_instr_len = max(len(instr), max_instr_len)
 
-        instrs = numpy.zeros((len(obss), max_instr_len))
+            instrs = numpy.zeros((len(obss), max_instr_len))
 
-        for i, instr in enumerate(raw_instrs):
-            instrs[i, :len(instr)] = instr
+            for i, instr in enumerate(raw_instrs):
+                instrs[i, :len(instr)] = instr
 
-        instrs = torch.tensor(instrs, device=device, dtype=torch.long)
+            instrs = torch.tensor(instrs, device=device, dtype=torch.long)
         return instrs
 
 
@@ -112,14 +117,14 @@ class ObssPreprocessor:
             "instr": self.vocab.max_size
         }
 
-    def __call__(self, obss, device=None):
+    def __call__(self, obss, device=None,use_bert=False):
         obs_ = babyai.rl.DictList()
 
         if "image" in self.obs_space.keys():
             obs_.image = self.image_preproc(obss, device=device)
 
         if "instr" in self.obs_space.keys():
-            obs_.instr = self.instr_preproc(obss, device=device)
+            obs_.instr = self.instr_preproc(obss, device=device,use_bert=use_bert)
 
         return obs_
 

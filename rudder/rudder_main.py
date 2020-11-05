@@ -1,4 +1,5 @@
 from collections import Counter
+from sys import platform
 
 import numpy as np
 import torch
@@ -32,6 +33,7 @@ class Rudder:
     def __init__(self, nr_procs, device, frames_per_proc, instr_dim, memory_dim, image_dim, model_name, lr,
                  base_rl_algo):
 
+        self.use_bert = True
         self.max_grad_norm = 0.5
         self.mu = 1
         self.quality_threshold = 0.85
@@ -110,7 +112,8 @@ class Rudder:
                                                                                       my_visual_embeddings,
                                                                                       is_training=False)
         if update % 200 == 0:
-            self.visualize_current_reward_redistribution(loss, my_obs, my_actions, my_rewards, aux, main, predictions,
+            if platform != "darwin":
+                self.visualize_current_reward_redistribution(loss, my_obs, my_actions, my_rewards, aux, main, predictions,
                                                          update, my_dones, model_name)
         for i in range(my_actions.shape[0]):
             masks_, rewards_, values_, actions_, obs_, seq_return_, final_loss, dones_, visual_embeddings_ = my_masks[
@@ -144,7 +147,10 @@ class Rudder:
 
     def net_single_step_feed_forward(self, memory, memories, preprocessed_obs, mask, action, value, visual_embeddings,
                                      step):
-        model_results = self.il_learn.acmodel(preprocessed_obs, memory * mask.unsqueeze(1),
+        instr_input = None
+        if self.use_bert:
+            instr_input = preprocessed_obs.instr
+        model_results = self.il_learn.acmodel(preprocessed_obs, memory * mask.unsqueeze(1),instr_input,
                                               visual_embedding=visual_embeddings, actions=action, value=value)
         new_memory = model_results["memory"]
         memories[step] = memory
@@ -217,7 +223,7 @@ class Rudder:
                 value = values[:, i]
                 visual_embedding = visual_embeddings[:, i]
 
-            preprocessed_obs = self.base_rl_algo.preprocess_obss(obs, device=self.device)
+            preprocessed_obs = self.base_rl_algo.preprocess_obss(obs, device=self.device,use_bert = self.use_bert)
             if is_training:
                 memory, memories, model_results = self.net_single_step_feed_forward(memory, memories, preprocessed_obs,
                                                                                     mask, action, value,
