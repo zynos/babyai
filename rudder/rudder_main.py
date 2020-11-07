@@ -7,7 +7,7 @@ from myScripts.ReplayBuffer import ProcessData
 from rudder.rudder_evaluate import build_loss_str
 
 from rudder.rudder_imitation_learning import RudderImitation
-from rudder.rudder_plot import RudderPlotter
+from rudder.rudder_plot import RudderPlotter, redistribute_reward
 from rudder.rudder_replay_buffer import RudderReplayBuffer
 from torch.optim import Adam
 
@@ -33,7 +33,7 @@ class Rudder:
     def __init__(self, nr_procs, device, frames_per_proc, instr_dim, memory_dim, image_dim, model_name, lr,
                  base_rl_algo):
 
-        self.use_bert = True
+        self.use_bert = False
         self.max_grad_norm = 0.5
         self.mu = 1
         self.quality_threshold = 0.85
@@ -320,19 +320,19 @@ class Rudder:
             self.info_print(ids[i], seq_return[i], loss[i], main[i], aux[i], predictions[i], my_rewards[i], my_dones[i])
         return np.mean(losses), np.mean(aux_losses), grad_norm
 
-    def redistribute_reward(self, predictions, rewards):
-        # Use the differences of predictions as redistributed reward
-        redistributed_reward = predictions[:, 1:] - predictions[:, :-1]
-
-        # For the first timestep we will take (0-predictions[:, :1]) as redistributed reward
-        redistributed_reward = torch.cat([predictions[:, :1], redistributed_reward], dim=1)
-        returns = rewards.sum(dim=1)
-        predicted_returns = redistributed_reward.sum(dim=1)
-        prediction_error = returns - predicted_returns
-
-        # Distribute correction for prediction error equally over all sequence positions
-        redistributed_reward += prediction_error[:, None] / redistributed_reward.shape[1]
-        return redistributed_reward
+    # def redistribute_reward(self, predictions, rewards):
+    #     # Use the differences of predictions as redistributed reward
+    #     redistributed_reward = predictions[:, 1:] - predictions[:, :-1]
+    #
+    #     # For the first timestep we will take (0-predictions[:, :1]) as redistributed reward
+    #     redistributed_reward = torch.cat([predictions[:, :1], redistributed_reward], dim=1)
+    #     returns = rewards.sum(dim=1)
+    #     predicted_returns = redistributed_reward.sum(dim=1)
+    #     prediction_error = returns - predicted_returns
+    #
+    #     # Distribute correction for prediction error equally over all sequence positions
+    #     redistributed_reward += prediction_error[:, None] / redistributed_reward.shape[1]
+    #     return redistributed_reward
 
     def predict_new_rewards(self, obs, masks, rewards, values, actions, dones, visual_embeddings):
         # rewards = rewards / 20
@@ -346,7 +346,7 @@ class Rudder:
                                                                                                           dones,
                                                                                                           visual_embeddings)
             predictions = self.feed_single_sequence_to_net(obs_, actions_, masks_, values_, visual_embeddings_)
-            redistributed_reward = self.redistribute_reward(predictions.unsqueeze(0), rewards_.unsqueeze(0))
+            redistributed_reward = redistribute_reward(predictions.unsqueeze(0), rewards_.unsqueeze(0))
             out_rewards.append(redistributed_reward.squeeze(0))
             best_actions.append(actions_[torch.argmax(redistributed_reward)].item())
         out_rewards = torch.stack(out_rewards)
@@ -422,7 +422,7 @@ class Rudder:
             values,
             actions, dones, visual_embeddings)
         predictions = self.feed_single_sequence_to_net(my_obs, my_actions, my_masks, my_values,my_visual_embeddings, batch=True)
-        redistributed_reward = self.redistribute_reward(predictions, my_rewards)
+        redistributed_reward = redistribute_reward(predictions, my_rewards)
         # out_rewards.append(redistributed_reward.squeeze(0))
         best_actions = [my_actions[i][torch.argmax(line)].item() for i, line in enumerate(redistributed_reward)]
         out_rewards = redistributed_reward
