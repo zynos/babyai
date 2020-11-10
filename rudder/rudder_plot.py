@@ -14,12 +14,12 @@ def redistribute_reward(predictions, rewards):
 
     # For the first timestep we will take (0-predictions[:, :1]) as redistributed reward
     redistributed_reward = torch.cat([predictions[:, :1], redistributed_reward], dim=1)
-    # returns = rewards.sum(dim=1)
-    # predicted_returns = redistributed_reward.sum(dim=1)
-    # prediction_error = returns - predicted_returns
-    #
-    # # Distribute correction for prediction error equally over all sequence positions
-    # redistributed_reward += prediction_error[:, None] / redistributed_reward.shape[1]
+    returns = rewards.sum(dim=1)
+    predicted_returns = redistributed_reward.sum(dim=1)
+    prediction_error = returns - predicted_returns
+
+    # Distribute correction for prediction error equally over all sequence positions
+    redistributed_reward += prediction_error[:, None] / redistributed_reward.shape[1]
     return redistributed_reward
 
 

@@ -176,13 +176,19 @@ def load_model_for_testing():
 
 # load_model_for_testing()
 
-def load_my_model():
-    model = torch.load("stdLSTm_model.pt")
-    model.eval()
+# def load_my_model():
+#     model = torch.load("stdLSTm_model.pt")
+#     model.eval()
+#
+#     print("Model's state_dict:")
+#     for param_tensor in model.state_dict():
+#         print(param_tensor, "\t", model.state_dict()[param_tensor].size())
+#
+#
+# load_my_model()
 
-    print("Model's state_dict:")
-    for param_tensor in model.state_dict():
-        print(param_tensor, "\t", model.state_dict()[param_tensor].size())
+from rudder.rudder_plot import redistribute_reward
 
 
-load_my_model()
+preds = torch.tensor([0.3,0.6,0.7])
+redistribute_reward(preds.unsqueeze(0),None)
