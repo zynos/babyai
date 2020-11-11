@@ -87,7 +87,7 @@ class BaseAlgo(ABC):
         shape = (self.num_frames_per_proc, self.num_procs)
 
         self.obs = self.env.reset()
-        self.obss = [None] * (shape[0])
+        self.obss = np.empty(shape[0],dtype=object)
 
         # APEX requires dtype=torch.float16
         # self.memory = torch.zeros(shape[1], self.acmodel.memory_size, device=self.device,dtype=torch.float16)
