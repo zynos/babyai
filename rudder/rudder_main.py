@@ -1,3 +1,4 @@
+import gc
 from collections import Counter
 from sys import platform
 
@@ -318,7 +319,16 @@ class Rudder:
             if False not in qualities_bools:
                 bad_quality = False
             self.info_print(ids[i], seq_return[i], loss[i], main[i], aux[i], predictions[i], my_rewards[i], my_dones[i])
-        return np.mean(losses), np.mean(aux_losses), grad_norm
+            mean_l = np.mean(losses)
+            mean_aux = np.mean(aux_losses)
+            grad_n = grad_norm.item()
+            del losses
+            del loss
+            del predictions
+            del aux_losses
+            gc.collect()
+
+        return mean_l,mean_aux, grad_n
 
     # def redistribute_reward(self, predictions, rewards):
     #     # Use the differences of predictions as redistributed reward

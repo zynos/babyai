@@ -16,7 +16,7 @@ class RudderReplayBuffer:
         self.rewards = torch.zeros(self.max_size, frames_per_proc, device=device)
         self.values = torch.zeros(self.max_size, frames_per_proc, device=device)
         self.actions = torch.zeros(self.max_size, frames_per_proc, device=device)
-        self.obs = [None] * self.max_size
+        self.obs = np.empty(self.max_size,dtype=object)
         self.losses = np.zeros(self.max_size)
         self.returns = np.zeros(self.max_size)
         self.dones = torch.zeros(self.max_size, frames_per_proc, device=device)

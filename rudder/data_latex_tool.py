@@ -34,7 +34,7 @@ def create_df_slice(data):
     return df_to_plus_minus(sum_df)
 
 
-directory = "../scripts/logs/masterThesis/rudVBert/"
+directory = "../scripts/logs/masterThesis/rudVNoESR/"
 baseline_name = "rudbase"
 
 dirs = [f for f in listdir(directory) if f != '.DS_Store']
@@ -51,7 +51,7 @@ for d in dirs:
 assert len(baseline_data) == len(to_compared) == 3
 
 base_df = create_df_slice(baseline_data).rename('rudder vanilla')
-rud_df = create_df_slice(to_compared).rename('rudder bert')
+rud_df = create_df_slice(to_compared).rename('modified reward redistr.')
 
 final_df = pd.concat([base_df, rud_df], axis=1)
 latex_str = final_df.to_latex()
