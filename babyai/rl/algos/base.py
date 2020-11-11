@@ -290,10 +290,11 @@ class BaseAlgo(ABC):
 
         # Add advantage and return to experiences
         if self.use_rudder:
+            dummy_embedddings = torch.zeros_like(self.embeddings)
             self.rudder.fill_buffer_batch(self.masks.detach().clone(), self.rewards.detach().clone(),
                                           self.values.detach().clone(),
                                           self.actions.detach().clone(), copy.deepcopy(self.obss), self.dones.detach().clone(),
-                                          self.embeddings.detach().clone(),update_nr,self.model_name)
+                                          dummy_embedddings,update_nr,self.model_name)
 
             if self.rudder.replay_buffer.buffer_full() and self.rudder.replay_buffer.encountered_different_returns():
                 rudder_loss,rudder_aux, rud_grad_norm = self.rudder.train_on_buffer_data()
@@ -303,7 +304,7 @@ class BaseAlgo(ABC):
                                                                             self.values.detach().clone(),
                                                                             self.actions.detach().clone(),
                                                                             self.dones.detach().clone(),
-                                                                            self.embeddings.detach().clone())
+                                                                            dummy_embedddings)
                 # self.rudder_rewards *= 20
 
         preprocessed_obs = self.preprocess_obss(self.obs, device=self.device)
