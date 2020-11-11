@@ -4,7 +4,7 @@ import numpy as np
 import torch
 # import multiprocessing as mp
 # import numpy
-
+import copy
 from babyai.rl.format import default_preprocess_obss
 from babyai.rl.utils import DictList, ParallelEnv
 from babyai.rl.utils.supervised_losses import ExtraInfoCollector
@@ -292,13 +292,13 @@ class BaseAlgo(ABC):
         if self.use_rudder:
             self.rudder.fill_buffer_batch(self.masks.detach().clone(), self.rewards.detach().clone(),
                                           self.values.detach().clone(),
-                                          self.actions.detach().clone(), self.obss, self.dones.detach().clone(),
+                                          self.actions.detach().clone(), copy.deepcopy(self.obss), self.dones.detach().clone(),
                                           self.embeddings.detach().clone(),update_nr,self.model_name)
 
             if self.rudder.replay_buffer.buffer_full() and self.rudder.replay_buffer.encountered_different_returns():
                 rudder_loss,rudder_aux, rud_grad_norm = self.rudder.train_on_buffer_data()
                 self.rudder.grad_norm = rud_grad_norm
-                self.rudder_rewards = self.rudder.predict_new_rewards_batch(self.obss, self.masks.detach().clone(),
+                self.rudder_rewards = self.rudder.predict_new_rewards_batch(copy.deepcopy(self.obss), self.masks.detach().clone(),
                                                                             self.rewards.detach().clone(),
                                                                             self.values.detach().clone(),
                                                                             self.actions.detach().clone(),
