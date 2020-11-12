@@ -8,9 +8,9 @@ from torch.distributions import Categorical
 
 class RudderReplayBuffer:
     def __init__(self, nr_procs, frames_per_proc, device):
-        self.sample_amount = 80
+        self.sample_amount = 8
         self.added_episodes = 0
-        self.max_size = 1024
+        self.max_size = 128
         self.nr_procs = nr_procs
         self.frames_per_proc = frames_per_proc
         self.visual_embeddings = torch.zeros(self.max_size, frames_per_proc, 128, device=device)
