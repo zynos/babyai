@@ -322,11 +322,6 @@ class Rudder:
         mean_l = np.mean(losses)
         mean_aux = np.mean(aux_losses)
         grad_n = grad_norm.item()
-        del losses
-        del loss
-        del predictions
-        del aux_losses
-        gc.collect()
 
         return mean_l,mean_aux, grad_n
 

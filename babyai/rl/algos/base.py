@@ -224,7 +224,7 @@ class BaseAlgo(ABC):
                 extra_predictions = model_results['extra_predictions']
                 embedding = model_results['embedding']
                 rudder_value = model_results['rudder_value']
-                logits = model_results['logits']
+                # logits = model_results['logits']
 
             action = dist.sample()
             # print("checkpoint 5")

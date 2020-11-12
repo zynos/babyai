@@ -187,8 +187,8 @@ def load_model_for_testing():
 #
 # load_my_model()
 
-from rudder.rudder_plot import redistribute_reward
-
-
-preds = torch.tensor([0.3,0.6,0.7])
-redistribute_reward(preds.unsqueeze(0),None)
+# from rudder.rudder_plot import redistribute_reward
+#
+#
+# preds = torch.tensor([0.3,0.6,0.7])
+# redistribute_reward(preds.unsqueeze(0),None)

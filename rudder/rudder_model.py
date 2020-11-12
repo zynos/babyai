@@ -360,8 +360,8 @@ class ACModel(nn.Module, MyRecurrentACModel):
             extra_predictions = dict()
 
         x = self.actor(embedding)
-        logits = F.log_softmax(x, dim=1)
-        dist = Categorical(logits=logits)
+        # logits = F.log_softmax(x, dim=1)
+        dist = Categorical(logits=F.log_softmax(x, dim=1))
 
         x = self.critic(embedding)
         value = x.squeeze(1)
@@ -369,9 +369,10 @@ class ACModel(nn.Module, MyRecurrentACModel):
         # RUDDER
         x = self.rudder_critic(embedding)
         rudder_value = x.squeeze(1)
+        embedding = embedding.detach().clone()
 
         return {'dist': dist, 'value': value, 'memory': memory, 'extra_predictions': extra_predictions,
-                "embedding": embedding, "rudder_value": rudder_value, "logits": logits}
+                "embedding": embedding, "rudder_value": rudder_value}
 
     def _get_instr_embedding(self, instr):
         if self.lang_model == 'gru':

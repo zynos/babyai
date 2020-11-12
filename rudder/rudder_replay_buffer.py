@@ -1,3 +1,5 @@
+import copy
+
 import numpy as np
 import torch
 from scipy.stats import rankdata
@@ -11,12 +13,12 @@ class RudderReplayBuffer:
         self.max_size = 1024
         self.nr_procs = nr_procs
         self.frames_per_proc = frames_per_proc
-        self.visual_embeddings = torch.zeros(self.max_size, frames_per_proc,128, device=device)
+        self.visual_embeddings = torch.zeros(self.max_size, frames_per_proc, 128, device=device)
         self.masks = torch.zeros(self.max_size, frames_per_proc, device=device)
         self.rewards = torch.zeros(self.max_size, frames_per_proc, device=device)
         self.values = torch.zeros(self.max_size, frames_per_proc, device=device)
         self.actions = torch.zeros(self.max_size, frames_per_proc, device=device)
-        self.obs = np.empty(self.max_size,dtype=object)
+        self.obs = np.empty(self.max_size, dtype=object)
         self.losses = np.zeros(self.max_size)
         self.returns = np.zeros(self.max_size)
         self.dones = torch.zeros(self.max_size, frames_per_proc, device=device)
@@ -56,22 +58,24 @@ class RudderReplayBuffer:
     #     self.returns = torch.sum(rewards, dim=0)
     #     self.obs = list(map(list, zip(*obs)))
 
-    def add_single_sequence(self, masks, rewards, values, actions, obs, returnn, loss, dones,visual_embeddings, index):
-        self.masks[index] = masks
-        self.rewards[index] = rewards
-        self.values[index] = values
-        self.actions[index] = actions
-        self.obs[index] = obs
-        self.dones[index] = dones
+    def add_single_sequence(self, masks, rewards, values, actions, obs, returnn, loss, dones, visual_embeddings, index):
+        self.masks[index] = masks.detach().clone()
+        self.rewards[index] = rewards.detach().clone()
+        self.values[index] = values.detach().clone()
+        self.actions[index] = actions.detach().clone()
+        self.obs[index] = copy.deepcopy(obs)
+        self.dones[index] = dones.detach().clone()
         self.returns[index] = returnn.item()
         self.losses[index] = loss.item()
-        self.visual_embeddings[index] = visual_embeddings
+        self.visual_embeddings[index] = visual_embeddings.detach().clone()
         if not self.buffer_full():
             self.added_episodes += 1
 
     def get_single_sequence(self, nr):
-        return self.obs[nr], self.masks[nr], self.rewards[nr].clone(), self.actions[nr], self.values[nr], self.dones[nr],self.visual_embeddings[nr]
-
+        ret = (copy.deepcopy(self.obs[nr]), self.masks[nr].detach().clone(), self.rewards[nr].detach().clone(),
+               self.actions[nr].detach().clone(), self.values[nr].detach().clone(), self.dones[nr].detach().clone(),
+               self.visual_embeddings[nr].detach().clone())
+        return ret
 
     def get_combined_ranks(self, losses, returns):
         # we need the deviation of the mean return per episode
