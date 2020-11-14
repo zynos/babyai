@@ -222,7 +222,7 @@ class BaseAlgo(ABC):
                 value = model_results['value']
                 memory = model_results['memory']
                 extra_predictions = model_results['extra_predictions']
-                embedding = model_results['embedding']
+                # embedding = model_results['embedding']
                 rudder_value = model_results['rudder_value']
                 # logits = model_results['logits']
 
@@ -247,7 +247,9 @@ class BaseAlgo(ABC):
             self.actions[i] = action
             self.values[i] = value
             self.rudder_values[i] = rudder_value
-            self.embeddings[i] = embedding
+            # self.embeddings[i] = embedding
+            # self.embeddings[i] = torch.zeros(sh)
+
             if self.reshape_reward is not None:
                 self.rewards[i] = torch.tensor([
                     self.reshape_reward(obs_, action_, reward_, done_)
