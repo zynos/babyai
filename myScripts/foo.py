@@ -186,3 +186,7 @@ def load_my_model():
 
 
 load_my_model()
+
+import pandas as pd
+csv=pd.read_csv("/home/nick/PycharmProjects/babyRudder/babyai/scripts/logs/Rec20_P512_1.0_98138ab_qThresh0.9_CLIPseed2/log.csv")
+print(csv["rud_quality"].mean())

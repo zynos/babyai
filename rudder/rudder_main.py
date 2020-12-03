@@ -19,7 +19,7 @@ class NonParsedDummyArgs:
         self.instr_arch = instr_arch
         self.arch = 'expert_filmcnn'
         self.image_dim = image_dim
-        self.memory_dim = memory_dim
+        self.memory_dim = 64
         self.instr_dim = instr_dim
         self.env = "BabyAI-PutNextLocal-v0"
         self.log_interval = 1
@@ -33,12 +33,13 @@ class Rudder:
 
         self.max_grad_norm = 0.5
         self.mu = 1
-        self.quality_threshold = 0.85
+        self.quality_threshold = 0.9
         use_widi = False
         dummy_args = NonParsedDummyArgs(instr_dim, memory_dim, image_dim,base_rl_algo.acmodel.lang_model, model_name,lr)
         use_residual = True
         use_endpool = True
-        self.il_learn = RudderImitation(None, True, True,False,use_widi,use_endpool,use_residual, dummy_args)
+        use_value = True
+        self.il_learn = RudderImitation(None, True, True,use_value,use_widi,use_endpool,use_residual, dummy_args)
         # these 2 must be updated when replaybuffer full and then after every new insert
         self.il_learn.mean = 0
         self.il_learn.std_dev = 1

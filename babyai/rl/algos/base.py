@@ -123,7 +123,7 @@ class BaseAlgo(ABC):
         self.log_num_frames = [0] * self.num_procs
 
         # RUDDER changes
-        self.use_rudder = True
+        self.use_rudder = False
         # if self.use_rudder:
         #     assert self.num_frames_per_proc == self.recurrence
         # self.rudder = Rudder(self.num_procs, acmodel.obs_space,
