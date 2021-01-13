@@ -125,13 +125,13 @@ def main(path_to_demos, filter_after_loss, output_path_prefix, args):
     utils.configure_logging(args.model)
     logger = logging.getLogger(__name__)
 
-    il_learn = RudderImitation(path_to_demos, args)
+    il_learn = RudderImitation(path_to_demos, True,args)
     valid_files = os.listdir(path_to_demos + "validate/")
     valid_demos = il_learn.load_demos(path_to_demos + "validate/" + valid_files[0])
     log, finished_episodes = il_learn.run_epoch_recurrence(valid_demos, rudder_eval=True)
 
     # generate unfiltered reproducable output
-    generate_eval_pictures(False, il_learn, finished_episodes)
+    # generate_eval_pictures(False, il_learn, finished_episodes)
     # generate filtered non reproducable output
     generate_eval_pictures(True, il_learn, finished_episodes)
 

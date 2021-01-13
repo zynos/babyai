@@ -234,7 +234,10 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
             instr_embedding = (instr_embedding * attention[:, :, None]).sum(1)
 
         x = torch.transpose(torch.transpose(obs.image, 1, 3), 2, 3)
-
+        one_hot_actions = F.one_hot(actions, num_classes=self.action_space.n).float()
+        instr_embedding = torch.cat([instr_embedding, one_hot_actions], dim=1)
+        # if self.add_actions_to_film:
+        #     instr_embedding = torch.cat([instr_embedding, one_hot_actions], dim=1)
         if self.arch.startswith("expert_filmcnn"):
             x = self.image_conv(x)
             for controler in self.controllers:
@@ -246,7 +249,6 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
         x = x.reshape(x.shape[0], -1)
         
         if not self.no_action_input:
-            one_hot_actions= F.one_hot(actions,num_classes=self.action_space.n).float()
             x = torch.cat([x,one_hot_actions],dim=1)
 
         if self.use_memory:

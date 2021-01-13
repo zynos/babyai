@@ -3,6 +3,8 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
+import torch
+
 
 class RudderPlotter:
     def __init__(self,il_learn):
@@ -13,11 +15,26 @@ class RudderPlotter:
 
         Path("myPics").mkdir(parents=True, exist_ok=True)
 
-    def plot_current_step(self, orig_rews, redistributed_rews, actions, ax, i, label, plot_orig):
+    def redistribute_reward(self, predictions, rewards):
+        # Use the differences of predictions as redistributed reward
+        redistributed_reward = predictions[:, 1:] - predictions[:, :-1]
+
+        # For the first timestep we will take (0-predictions[:, :1]) as redistributed reward
+        redistributed_reward = torch.cat([predictions[:, :1], redistributed_reward], dim=1)
+        returns = rewards.sum(dim=1)
+        predicted_returns = redistributed_reward.sum(dim=1)
+        prediction_error = returns - predicted_returns
+
+        # Distribute correction for prediction error equally over all sequence positions
+        redistributed_reward += prediction_error[:, None] / redistributed_reward.shape[1]
+        return redistributed_reward
+
+    def plot_current_step(self, orig_rews, predictions, actions, ax, i, label, plot_orig):
         action_dict = {0: "turn left", 1: "turn right", 2: "move forward", 3: "pick up", 4: "drop", 5: "toggle",
                        6: "done"}
         actions = [action_dict[a.item()] for a in actions]
-        redistributed_rews = redistributed_rews.cpu().squeeze().numpy()
+        redistributed_rews = self.redistribute_reward(predictions.unsqueeze(0),orig_rews.unsqueeze(0)).cpu().squeeze().numpy()
+        # predictions = predictions.cpu().squeeze().numpy()
         if plot_orig:
             rews = orig_rews.cpu().clone().numpy()
             # rews = self.il_learn.scale_rewards(rews, self.il_learn.minus_to_one_scale)

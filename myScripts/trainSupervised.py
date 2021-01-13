@@ -685,6 +685,7 @@ def plot_rewards(rewards):
 
 
 def create_episode_len_histogram(path):
+    plt.rcParams.update({'font.size': 18})
     files = [f for f in os.listdir(path) if os.path.isfile(path + f)]
     lens = []
     total = 0
@@ -720,7 +721,7 @@ def create_episode_len_histogram(path):
 # env = gym.make("BabyAI-PutNextLocal-v0")
 # sys.settrace
 training = Training()
-# create_episode_len_histogram("../scripts/demos/train/")
+create_episode_len_histogram("../scripts/demos/240kDS/train/")
 # training.visualize_low_and_high_loss_episodes("../scripts/demos/240kDS/train/", "../scripts/demos/240kDS/validate/"
 #                                               , "testingFreshGRU/", "models/new/firstFixed/", 6, "GRU")
 # training.visualize_failed_episode_in_parts(127, 129, "failedVisualized240KGRU/",
@@ -729,7 +730,7 @@ training = Training()
 # training.calc_rew_of_generated_episodes("../scripts/demos/train/")
 # do_multiple_evaluations("models/new/firstFixed/", "EVAL_GRU_240k/", "../scripts/demos/240kDS/train/",
 # "../scripts/demos/240kDS/validate/")
-training.train_file_based("../scripts/demos/240kDS/")
+# training.train_file_based("../scripts/demos/240kDS/")
 # find_unique_episodes("../scripts/replays7/")
 # calc_memory_saving_ret_mean("../scripts/demos/train/")
 # my_path = "testi/"
